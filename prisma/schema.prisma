@@ -1,0 +1,205 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String       @id @default(cuid())
+  name               String
+  username           String       @unique
+  email              String       @unique
+  mobile             String?
+  passwordHash       String
+  role               String       @default("ADMIN") // SUPER_ADMIN | ADMIN
+  status             String       @default("ACTIVE") // ACTIVE | DISABLED
+  mustChangePassword Boolean      @default(false)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  assignedLeads      Lead[]       @relation("AssignedAdmin")
+  quotations         Quotation[]
+  versions           QuotationVersion[]
+  auditLogs          AuditLog[]
+  appointments       Appointment[]
+}
+
+model Customer {
+  id         String      @id @default(cuid())
+  name       String
+  phone      String
+  email      String?
+  address    String?
+  city       String?
+  pincode    String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  leads      Lead[]
+  quotations Quotation[]
+}
+
+model Lead {
+  id              String        @id @default(cuid())
+  leadNumber      String        @unique
+  customerId      String
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  assignedAdminId String?
+  assignedAdmin   User?         @relation("AssignedAdmin", fields: [assignedAdminId], references: [id])
+  status          String        @default("NEW")
+  lostReason      String?
+  source          String?
+  notes           String?
+  appointmentDate DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  appointments    Appointment[]
+  quotations      Quotation[]
+}
+
+model Appointment {
+  id          String    @id @default(cuid())
+  leadId      String
+  lead        Lead      @relation(fields: [leadId], references: [id])
+  adminId     String?
+  admin       User?     @relation(fields: [adminId], references: [id])
+  scheduledAt DateTime
+  status      String    @default("SCHEDULED") // SCHEDULED | DONE | CANCELLED
+  notes       String?
+  createdAt   DateTime  @default(now())
+}
+
+model MaterialCategory {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  sortOrder Int        @default(0)
+  materials Material[]
+}
+
+model Material {
+  id             String           @id @default(cuid())
+  categoryId     String
+  category       MaterialCategory @relation(fields: [categoryId], references: [id])
+  name           String
+  subCategory    String?
+  brand          String?
+  sku            String?
+  description    String?
+  price          Float            @default(0)
+  unit           String           @default("piece")
+  coverage       Float            @default(1)
+  coverageUnit   String           @default("sq.ft")
+  wastagePercent Float            @default(0)
+  quantityRule   String           @default("PIECE") // AREA | PIECE | FIXED
+  imageUrl       String?
+  status         String           @default("ACTIVE") // ACTIVE | INACTIVE
+  createdById    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+model Package {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  pricePerSqft Float
+  description  String?
+  duration     String?
+  status       String   @default("ACTIVE")
+  updatedAt    DateTime @updatedAt
+}
+
+model Quotation {
+  id              String             @id @default(cuid())
+  quotationNumber String             @unique
+  customerId      String
+  customer        Customer           @relation(fields: [customerId], references: [id])
+  leadId          String?
+  lead            Lead?              @relation(fields: [leadId], references: [id])
+  createdById     String
+  createdBy       User               @relation(fields: [createdById], references: [id])
+  status          String             @default("DRAFT")
+  validityDays    Int                @default(30)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  versions        QuotationVersion[]
+}
+
+model QuotationVersion {
+  id             String          @id @default(cuid())
+  quotationId    String
+  quotation      Quotation       @relation(fields: [quotationId], references: [id])
+  versionNumber  Int
+  versionType    String          @default("INITIAL") // INITIAL | UPGRADED | REVISED
+  status         String          @default("DRAFT")
+  totalArea      Float           @default(0)
+  packageId      String?
+  packageName    String?
+  packageRate    Float?
+  packageAmount  Float           @default(0)
+  itemsAmount    Float           @default(0)
+  grossValue     Float           @default(0)
+  discountType   String          @default("FLAT") // FLAT | PERCENT
+  discount       Float           @default(0)
+  discountAmount Float           @default(0)
+  taxableValue   Float           @default(0)
+  gstRate        Float           @default(18)
+  gstAmount      Float           @default(0)
+  totalPayable   Float           @default(0)
+  notes          String?
+  createdById    String
+  createdBy      User            @relation(fields: [createdById], references: [id])
+  createdAt      DateTime        @default(now())
+  bathrooms      Bathroom[]
+  items          QuotationItem[]
+
+  @@unique([quotationId, versionNumber])
+}
+
+model Bathroom {
+  id          String           @id @default(cuid())
+  versionId   String
+  version     QuotationVersion @relation(fields: [versionId], references: [id])
+  name        String
+  type        String           @default("COMMON")
+  length      Float
+  width       Float
+  height      Float?
+  areaSqft    Float
+}
+
+model QuotationItem {
+  id         String           @id @default(cuid())
+  versionId  String
+  version    QuotationVersion @relation(fields: [versionId], references: [id])
+  section    String           @default("FIXTURES") // TILES | FIXTURES | ADDONS | OTHER
+  materialId String?
+  name       String
+  quantity   Float
+  unit       String
+  rate       Float
+  amount     Float
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  userName  String?
+  userRole  String?
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+model Counter {
+  key   String @id
+  value Int    @default(0)
+}

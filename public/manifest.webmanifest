@@ -1,0 +1,13 @@
+{
+  "name": "AURAVIX BATH STUDIO",
+  "short_name": "AURAVIX",
+  "description": "Quotation & Lead Management System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf9f7",
+  "theme_color": "#26262b",
+  "icons": [
+    { "src": "/brand/icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

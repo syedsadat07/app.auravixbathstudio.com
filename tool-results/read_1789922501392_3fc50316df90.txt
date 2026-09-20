@@ -1,0 +1,464 @@
+     1→/**
+     2→ * AURAVIX BATH STUDIO — Database seed
+     3→ * Run: bun prisma/seed.ts
+     4→ */
+     5→import { PrismaClient } from '@prisma/client'
+     6→import bcrypt from 'bcryptjs'
+     7→
+     8→const db = new PrismaClient()
+     9→
+    10→async function main() {
+    11→  console.log('Seeding AURAVIX BATH STUDIO…')
+    12→
+    13→  // ---------------- Users ----------------
+    14→  const sa1Pass = await bcrypt.hash('steve@1234JOBS', 10)
+    15→  const sa2Pass = await bcrypt.hash('white@0007teek', 10)
+    16→  const adminPass = await bcrypt.hash('admin@1234', 10)
+    17→
+    18→  const sa1 = await db.user.upsert({
+    19→    where: { email: 'syedsadat@auravixbathstudio.com' },
+    20→    update: {},
+    21→    create: {
+    22→      name: 'Syed Sadat',
+    23→      username: 'syedsadat',
+    24→      email: 'syedsadat@auravixbathstudio.com',
+    25→      mobile: '9845000001',
+    26→      passwordHash: sa1Pass,
+    27→      role: 'SUPER_ADMIN',
+    28→    },
+    29→  })
+    30→  const sa2 = await db.user.upsert({
+    31→    where: { email: 'syedshams@auravixbathstudio.com' },
+    32→    update: {},
+    33→    create: {
+    34→      name: 'Syed Shams',
+    35→      username: 'syedshams',
+    36→      email: 'syedshams@auravixbathstudio.com',
+    37→      mobile: '9845000002',
+    38→      passwordHash: sa2Pass,
+    39→      role: 'SUPER_ADMIN',
+    40→    },
+    41→  })
+    42→  const admin1 = await db.user.upsert({
+    43→    where: { email: 'rajesh@auravixbathstudio.com' },
+    44→    update: {},
+    45→    create: {
+    46→      name: 'Rajesh Kumar',
+    47→      username: 'rajesh',
+    48→      email: 'rajesh@auravixbathstudio.com',
+    49→      mobile: '9845000003',
+    50→      passwordHash: adminPass,
+    51→      role: 'ADMIN',
+    52→    },
+    53→  })
+    54→  const admin2 = await db.user.upsert({
+    55→    where: { email: 'priya@auravixbathstudio.com' },
+    56→    update: {},
+    57→    create: {
+    58→      name: 'Priya Sharma',
+    59→      username: 'priya',
+    60→      email: 'priya@auravixbathstudio.com',
+    61→      mobile: '9845000004',
+    62→      passwordHash: adminPass,
+    63→      role: 'ADMIN',
+    64→    },
+    65→  })
+    66→  console.log('✓ users')
+    67→
+    68→  // ---------------- Packages ----------------
+    69→  const pkgBasic = await db.package.upsert({
+    70→    where: { name: 'Basic' },
+    71→    update: { pricePerSqft: 2500 },
+    72→    create: {
+    73→      name: 'Basic',
+    74→      pricePerSqft: 2500,
+    75→      description: 'Essential renovation — quality ceramic tiling, standard sanitaryware and fittings.',
+    76→      duration: '10–12 days',
+    77→    },
+    78→  })
+    79→  const pkgPremium = await db.package.upsert({
+    80→    where: { name: 'Premium' },
+    81→    update: { pricePerSqft: 3500 },
+    82→    create: {
+    83→      name: 'Premium',
+    84→      pricePerSqft: 3500,
+    85→      description: 'Enhanced finishes — vitrified tiles, premium CP fittings and designer vanity.',
+    86→      duration: '14–18 days',
+    87→    },
+    88→  })
+    89→  const pkgLuxury = await db.package.upsert({
+    90→    where: { name: 'Luxury' },
+    91→    update: { pricePerSqft: 4500 },
+    92→    create: {
+    93→      name: 'Luxury',
+    94→      pricePerSqft: 4500,
+    95→      description: 'Signature experience — luxury finishes, rain shower, LED mirror and enclosures.',
+    96→      duration: '18–25 days',
+    97→    },
+    98→  })
+    99→  console.log('✓ packages')
+   100→
+   101→  // ---------------- Categories + Materials ----------------
+   102→  const cats = ['Tiles', 'Vanity', 'Shower', 'WC', 'Basin', 'Faucets', 'Add-ons', 'Others']
+   103→  const catIds: Record<string, string> = {}
+   104→  for (let i = 0; i < cats.length; i++) {
+   105→    const c = await db.materialCategory.upsert({
+   106→      where: { name: cats[i] },
+   107→      update: { sortOrder: i },
+   108→      create: { name: cats[i], sortOrder: i },
+   109→    })
+   110→    catIds[c.name] = c.id
+   111→  }
+   112→
+   113→  const materials: Array<{
+   114→    name: string
+   115→    category: string
+   116→    subCategory?: string
+   117→    brand?: string
+   118→    sku?: string
+   119→    description?: string
+   120→    price: number
+   121→    unit: string
+   122→    coverage?: number
+   123→    coverageUnit?: string
+   124→    wastagePercent?: number
+   125→    quantityRule: string
+   126→    imageUrl?: string
+   127→  }> = [
+   128→    { name: 'Ceramic Tile', category: 'Tiles', subCategory: 'Wall & Floor', brand: 'AURAVIX Essentials', sku: 'ABS-TIL-CER', description: 'Glossy ceramic wall & floor tile, beveled edges. Price per sq.ft.', price: 65, unit: 'sq.ft', coverage: 1, coverageUnit: 'sq.ft', wastagePercent: 10, quantityRule: 'AREA', imageUrl: '/materials/ceramic-tile.png' },
+   129→    { name: 'Vitrified Tile', category: 'Tiles', subCategory: 'Floor', brand: 'AURAVIX Select', sku: 'ABS-TIL-VIT', description: 'Polished vitrified floor tile, marble finish. Price per sq.ft.', price: 80, unit: 'sq.ft', coverage: 1, coverageUnit: 'sq.ft', wastagePercent: 10, quantityRule: 'AREA', imageUrl: '/materials/vitrified-tile.png' },
+   130→    { name: 'Standard Vanity', category: 'Vanity', subCategory: 'Vanity', brand: 'AURAVIX Basics', sku: 'ABS-VAN-STD', description: 'Standard vanity unit with mirror and storage.', price: 6500, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/vanity.png' },
+   131→    { name: 'Premium Vanity', category: 'Vanity', subCategory: 'Vanity', brand: 'AURAVIX Select', sku: 'ABS-VAN-PRM', description: 'Premium wooden vanity with soft-close drawers.', price: 8500, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/vanity.png' },
+   132→    { name: 'Luxury Vanity', category: 'Vanity', subCategory: 'Vanity', brand: 'AURAVIX Luxe', sku: 'ABS-VAN-LUX', description: 'Luxury vanity with quartz counter and backlit mirror.', price: 14500, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/vanity.png' },
+   133→    { name: 'Standard Shower', category: 'Shower', subCategory: 'Shower', brand: 'AURAVIX Basics', sku: 'ABS-SHW-STD', description: 'Overhead shower with single-flow head.', price: 3500, unit: 'set', quantityRule: 'PIECE', imageUrl: '/materials/rain-shower.png' },
+   134→    { name: 'Premium Shower', category: 'Shower', subCategory: 'Shower', brand: 'AURAVIX Select', sku: 'ABS-SHW-PRM', description: 'Premium multi-flow overhead shower system.', price: 5500, unit: 'set', quantityRule: 'PIECE', imageUrl: '/materials/rain-shower.png' },
+   135→    { name: 'Rain Shower', category: 'Shower', subCategory: 'Shower', brand: 'AURAVIX Luxe', sku: 'ABS-SHW-RAIN', description: 'Ceiling-mounted 12" square rain shower with thermostatic mixer.', price: 8500, unit: 'set', quantityRule: 'PIECE', imageUrl: '/materials/rain-shower.png' },
+   136→    { name: 'Hand Shower', category: 'Shower', subCategory: 'Shower', brand: 'AURAVIX Basics', sku: 'ABS-SHW-HAND', description: 'Hand shower with flexible hose and hook.', price: 2200, unit: 'set', quantityRule: 'PIECE', imageUrl: '/materials/faucet.png' },
+   137→    { name: 'Floor Mounted WC', category: 'WC', subCategory: 'WC', brand: 'AURAVIX Basics', sku: 'ABS-WC-FLR', description: 'Floor-mounted EWC, siphon flush.', price: 5500, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/wall-hung-wc.png' },
+   138→    { name: 'Wall Hung WC', category: 'WC', subCategory: 'WC', brand: 'AURAVIX Select', sku: 'ABS-WC-WALL', description: 'Wall-hung rimless WC with concealed cistern.', price: 12500, unit: 'set', quantityRule: 'PIECE', imageUrl: '/materials/wall-hung-wc.png' },
+   139→    { name: 'Counter Basin', category: 'Basin', subCategory: 'Basin', brand: 'AURAVIX Select', sku: 'ABS-BSN-CNT', description: 'Table-top counter basin, ceramic.', price: 4500, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/counter-basin.png' },
+   140→    { name: 'Wall Hung Basin', category: 'Basin', subCategory: 'Basin', brand: 'AURAVIX Basics', sku: 'ABS-BSN-WALL', description: 'Wall-hung basin with bottle trap.', price: 3200, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/counter-basin.png' },
+   141→    { name: 'Designer Basin', category: 'Basin', subCategory: 'Basin', brand: 'AURAVIX Luxe', sku: 'ABS-BSN-DES', description: 'Designer artisan vessel basin.', price: 7500, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/counter-basin.png' },
+   142→    { name: 'Basin Faucet', category: 'Faucets', subCategory: 'Faucets', brand: 'AURAVIX Select', sku: 'ABS-FCT-BSN', description: 'Single-lever basin mixer, chrome.', price: 2800, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/faucet.png' },
+   143→    { name: 'Shower Mixer', category: 'Faucets', subCategory: 'Faucets', brand: 'AURAVIX Select', sku: 'ABS-FCT-SMX', description: 'Concealed shower mixer with diverter knob.', price: 4200, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/faucet.png' },
+   144→    { name: 'Diverter', category: 'Faucets', subCategory: 'Faucets', brand: 'AURAVIX Select', sku: 'ABS-FCT-DIV', description: '2-inlet concealed diverter for overhead + hand shower.', price: 5200, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/faucet.png' },
+   145→    { name: 'Health Faucet', category: 'Faucets', subCategory: 'Faucets', brand: 'AURAVIX Basics', sku: 'ABS-FCT-HLT', description: 'Health faucet with braided hose.', price: 1200, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/faucet.png' },
+   146→    { name: 'Angle Valve', category: 'Faucets', subCategory: 'Faucets', brand: 'AURAVIX Basics', sku: 'ABS-FCT-ANG', description: 'Brass angle valve, chrome plated.', price: 450, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/faucet.png' },
+   147→    { name: 'Shower Enclosure', category: 'Add-ons', subCategory: 'Add-on', brand: 'AURAVIX Luxe', sku: 'ABS-ADD-ENC', description: 'Toughened glass shower enclosure, 6mm, chrome profiles.', price: 18000, unit: 'set', quantityRule: 'PIECE', imageUrl: '/materials/shower-enclosure.png' },
+   148→    { name: 'Bath Tub', category: 'Add-ons', subCategory: 'Add-on', brand: 'AURAVIX Luxe', sku: 'ABS-ADD-TUB', description: 'Freestanding acrylic bath tub with floor-mounted mixer.', price: 32000, unit: 'set', quantityRule: 'PIECE', imageUrl: '/materials/bath-tub.png' },
+   149→    { name: 'LED Mirror', category: 'Add-ons', subCategory: 'Add-on', brand: 'AURAVIX Luxe', sku: 'ABS-ADD-LED', description: 'LED backlit mirror with touch sensor and defogger.', price: 4500, unit: 'piece', quantityRule: 'PIECE', imageUrl: '/materials/led-mirror.png' },
+   150→  ]
+   151→
+   152→  const materialIdByName: Record<string, string> = {}
+   153→  for (const m of materials) {
+   154→    const existing = await db.material.findFirst({ where: { name: m.name } })
+   155→    const data = {
+   156→      categoryId: catIds[m.category],
+   157→      name: m.name,
+   158→      subCategory: m.subCategory,
+   159→      brand: m.brand,
+   160→      sku: m.sku,
+   161→      description: m.description,
+   162→      price: m.price,
+   163→      unit: m.unit,
+   164→      coverage: m.coverage ?? 1,
+   165→      coverageUnit: m.coverageUnit ?? 'piece',
+   166→      wastagePercent: m.wastagePercent ?? 0,
+   167→      quantityRule: m.quantityRule,
+   168→      imageUrl: m.imageUrl,
+   169→      status: 'ACTIVE',
+   170→    }
+   171→    const rec = existing
+   172→      ? await db.material.update({ where: { id: existing.id }, data })
+   173→      : await db.material.create({ data: { ...data, createdById: sa1.id } })
+   174→    materialIdByName[m.name] = rec.id
+   175→  }
+   176→  console.log('✓ materials', Object.keys(materialIdByName).length)
+   177→
+   178→  // ---------------- Settings ----------------
+   179→  const settings: Record<string, string> = {
+   180→    company_name: 'AURAVIX BATH STUDIO',
+   181→    company_address: '#42, 3rd Floor, Jayanagar 4th Block, Bengaluru, Karnataka 560011',
+   182→    company_phone: '+91 8047112200',
+   183→    company_email: 'hello@auravixbathstudio.com',
+   184→    company_website: 'www.auravixbathstudio.com',
+   185→    gstin: '29ABCDE1234F1Z5',
+   186→    pan: 'ABCDE1234F',
+   187→    reg_number: 'U74999KA2026PTC000000',
+   188→    quote_prefix: 'ABS-Q',
+   189→    quote_validity_days: '30',
+   190→    gst_rate: '18',
+   191→    consultation_fee: '299',
+   192→    bank_details: 'AURAVIX BATH STUDIO PVT LTD | HDFC Bank, Jayanagar Branch | A/C 50200 1234 5678 | IFSC HDFC0001234',
+   193→    upi_details: 'auravixbath@hdfcbank',
+   194→    terms:
+   195→      '1. This quotation is valid for 30 days from the date of issue.\n2. 50% advance payment required to commence work; 40% on mid-stage inspection; 10% on handover.\n3. Prices are based on standard site conditions. Any civil/carpentry modifications beyond scope will be charged separately.\n4. Delivery & installation timeline: 2–3 weeks from design freeze and advance receipt.\n5. Products remain AURAVIX property until full payment is received.\n6. Warranty: 1 year on workmanship; manufacturer warranty on all fixtures as applicable.\n7. Consultation fee of ₹299 is adjustable against the final project value.',
+   196→    orders_target: '10',
+   197→    admins_can_publish: 'true',
+   198→    logo_url: '/brand/logo.png',
+   199→  }
+   200→  for (const [key, value] of Object.entries(settings)) {
+   201→    await db.setting.upsert({ where: { key }, update: { value }, create: { key, value } })
+   202→  }
+   203→  console.log('✓ settings')
+   204→
+   205→  // ---------------- Demo leads / customers / appointments ----------------
+   206→  const today = new Date()
+   207→  today.setHours(16, 0, 0, 0)
+   208→  const tomorrow = new Date(today.getTime() + 24 * 3600 * 1000)
+   209→  const yesterday = new Date(today.getTime() - 24 * 3600 * 1000)
+   210→  const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 3600 * 1000)
+   211→  const daysAhead = (n: number) => new Date(Date.now() + n * 24 * 3600 * 1000)
+   212→
+   213→  const demoLeads: Array<{
+   214→    name: string
+   215→    phone: string
+   216→    email: string
+   217→    address: string
+   218→    city: string
+   219→    status: string
+   220→    lostReason?: string
+   221→    admin: string
+   222→    appointment?: Date | null
+   223→    createdDaysAgo: number
+   224→    notes?: string
+   225→  }> = [
+   226→    { name: 'Dhananjay', phone: '7019573007', email: 'dkumar.fost@gmail.com', address: '#203, Raj Meridian Apartment 2nd Cross Rd, KHB Colony, 5th Block, Koramangala', city: 'Bengaluru', status: 'CONSULTATION_SCHEDULED', admin: 'SA1', appointment: daysAhead(2), createdDaysAgo: 1, notes: 'Interested in Premium package for master bathroom.' },
+   227→    { name: 'Vaibhav Raj', phone: '9900112233', email: 'vaibhav.raj@gmail.com', address: '22, Brigade Residency, Uttharahalli Main Road', city: 'Bengaluru', status: 'CONSULTATION_SCHEDULED', admin: 'SA1', appointment: today, createdDaysAgo: 3 },
+   228→    { name: 'Manjula', phone: '9845099887', email: 'manjula.devi@outlook.com', address: '501, Sobha Dream Acres, Panathur', city: 'Bengaluru', status: 'CONSULTATION_SCHEDULED', admin: 'SA1', appointment: tomorrow, createdDaysAgo: 2 },
+   229→    { name: 'guruprasad rao', phone: '9343736558', email: 'gprao2002@gmail.com', address: '#007, Westside, Jayanagar', city: 'Bengaluru', status: 'MEETING_DONE', admin: 'SA1', createdDaysAgo: 20 },
+   230→    { name: 'Priyadarshini', phone: '9845058970', email: 'priyamagavi@gmail.com', address: '266-267, Lg Lake Dew 4th main Belli Shivalaya Bharathy Bangalore 560077', city: 'Bengaluru', status: 'CONVERTED', admin: 'SA1', createdDaysAgo: 40 },
+   231→    { name: 'amar sangwe', phone: '9632124578', email: 'amar.sangwe@gmail.com', address: 'B-704, Prestige Tech Park, Kadubeesanahalli', city: 'Bengaluru', status: 'MEETING_DONE', admin: 'RAJESH', createdDaysAgo: 12 },
+   232→    { name: 'Santosh H', phone: '7353881075', email: 'chandra.shekar@designcafe.com', address: 'A204, Vajra Global, Bengaluru', city: 'Bengaluru', status: 'CLOSED_LOST', lostReason: 'CANCELLED_PLANS', admin: 'SA1', createdDaysAgo: 25 },
+   233→    { name: 'Philip Daniel', phone: '9539827731', email: 'philip.deniel@gmail.com', address: '12, Cooke Town, Fraser Town', city: 'Bengaluru', status: 'CLOSED_LOST', lostReason: 'BUDGET', admin: 'SA1', createdDaysAgo: 30 },
+   234→    { name: 'Kavya Nair', phone: '8877665544', email: 'kavya.nair@gmail.com', address: '402, Purva Skywood, Harlur Road', city: 'Bengaluru', status: 'QUOTE_SHARED', admin: 'RAJESH', createdDaysAgo: 8 },
+   235→    { name: 'Rohit Shetty', phone: '9663344556', email: 'rohit.shetty@gmail.com', address: '9, Dollars Colony, RMV 2nd Stage', city: 'Bengaluru', status: 'FOLLOW_UP', admin: 'PRIYA', createdDaysAgo: 15 },
+   236→    { name: 'Lakshmi Iyer', phone: '9445566778', email: 'lakshmi.iyer@yahoo.com', address: '31, Basavanagudi, Bull Temple Road', city: 'Bengaluru', status: 'QUOTE_PREPARING', admin: 'PRIYA', createdDaysAgo: 5 },
+   237→    { name: 'Imran Khan', phone: '9123456780', email: 'imran.khan@gmail.com', address: '17, Langford Gardens, Richmond Town', city: 'Bengaluru', status: 'NEW', admin: 'RAJESH', createdDaysAgo: 0 },
+   238→    { name: 'Deepa Menon', phone: '9345678123', email: 'deepa.menon@gmail.com', address: '88, HSR Layout Sector 2', city: 'Bengaluru', status: 'CONTACTED', admin: 'PRIYA', createdDaysAgo: 1 },
+   239→  ]
+   240→
+   241→  const adminByName: Record<string, string> = {
+   242→    SA1: sa1.id,
+   243→    SA2: sa2.id,
+   244→    RAJESH: admin1.id,
+   245→    PRIYA: admin2.id,
+   246→  }
+   247→
+   248→  const leadIdByName: Record<string, string> = {}
+   249→  for (const l of demoLeads) {
+   250→    const existingCustomer = await db.customer.findFirst({ where: { phone: l.phone } })
+   251→    const customer = existingCustomer
+   252→      ? await db.customer.update({ where: { id: existingCustomer.id }, data: { name: l.name, email: l.email, address: l.address, city: l.city } })
+   253→      : await db.customer.create({
+   254→          data: { name: l.name, phone: l.phone, email: l.email, address: l.address, city: l.city },
+   255→        })
+   256→    const existingLead = await db.lead.findFirst({ where: { customerId: customer.id } })
+   257→    const base = {
+   258→      customerId: customer.id,
+   259→      assignedAdminId: adminByName[l.admin],
+   260→      status: l.status,
+   261→      lostReason: l.lostReason,
+   262→      appointmentDate: l.appointment ?? null,
+   263→      notes: l.notes,
+   264→      createdAt: daysAgo(l.createdDaysAgo),
+   265→    }
+   266→    let lead = existingLead
+   267→    if (lead) {
+   268→      lead = await db.lead.update({ where: { id: lead.id }, data: base })
+   269→    } else {
+   270→      const counterKey = 'lead'
+   271→      const existingCounter = await db.counter.findUnique({ where: { key: counterKey } })
+   272→      let num: number
+   273→      if (!existingCounter) {
+   274→        await db.counter.create({ data: { key: counterKey, value: 1000 } })
+   275→        num = 1000
+   276→      } else {
+   277→        const updated = await db.counter.update({ where: { key: counterKey }, data: { value: { increment: 1 } } })
+   278→        num = updated.value
+   279→      }
+   280→      lead = await db.lead.create({ data: { ...base, leadNumber: `BEN${String(num).padStart(5, '0')}` } })
+   281→    }
+   282→    leadIdByName[l.name] = lead.id
+   283→    if (l.appointment) {
+   284→      const hasAppt = await db.appointment.findFirst({ where: { leadId: lead.id } })
+   285→      if (!hasAppt) {
+   286→        await db.appointment.create({
+   287→          data: { leadId: lead.id, adminId: adminByName[l.admin], scheduledAt: l.appointment, status: 'SCHEDULED', notes: 'Site visit + measurement' },
+   288→        })
+   289→      }
+   290→    }
+   291→  }
+   292→  console.log('✓ leads')
+   293→
+   294→  // ---------------- Demo quotations ----------------
+   295→  const gstRate = 18
+   296→
+   297→  async function buildVersionData(opts: {
+   298→    customerName: string
+   299→    bathrooms: Array<{ name: string; type: string; length: number; width: number; height?: number }>
+   300→    packageName: string
+   301→    tileName: string
+   302→    fixtures: Array<{ material: string; qty: number }>
+   303→    addons: Array<{ material: string; qty: number }>
+   304→    consultation: boolean
+   305→    discountType: 'FLAT' | 'PERCENT'
+   306→    discount: number
+   307→  }) {
+   308→    const pkg = await db.package.findUnique({ where: { name: opts.packageName } })
+   309→    if (!pkg) throw new Error('package missing')
+   310→    const bathrooms = opts.bathrooms.map((b) => ({ ...b, areaSqft: Math.round(b.length * b.width * 100) / 100 }))
+   311→    const totalArea = bathrooms.reduce((s, b) => s + b.areaSqft, 0)
+   312→    const packageAmount = totalArea * pkg.pricePerSqft
+   313→
+   314→    const items: Array<{ section: string; materialId: string | null; name: string; quantity: number; unit: string; rate: number; amount: number }> = []
+   315→    const tile = await db.material.findUnique({ where: { id: materialIdByName[opts.tileName] } })
+   316→    if (tile) {
+   317→      const qty = Math.ceil((totalArea / tile.coverage) * (1 + tile.wastagePercent / 100))
+   318→      items.push({ section: 'TILES', materialId: tile.id, name: tile.name, quantity: qty, unit: tile.unit, rate: tile.price, amount: qty * tile.price })
+   319→    }
+   320→    for (const f of opts.fixtures) {
+   321→      const m = await db.material.findUnique({ where: { id: materialIdByName[f.material] } })
+   322→      if (m) items.push({ section: 'FIXTURES', materialId: m.id, name: m.name, quantity: f.qty, unit: m.unit, rate: m.price, amount: f.qty * m.price })
+   323→    }
+   324→    for (const a of opts.addons) {
+   325→      const m = await db.material.findUnique({ where: { id: materialIdByName[a.material] } })
+   326→      if (m) items.push({ section: 'ADDONS', materialId: m.id, name: m.name, quantity: a.qty, unit: m.unit, rate: m.price, amount: a.qty * m.price })
+   327→    }
+   328→    if (opts.consultation) {
+   329→      items.push({ section: 'OTHER', materialId: null, name: 'Design Consultation', quantity: 1, unit: 'unit', rate: 299, amount: 299 })
+   330→    }
+   331→    const itemsAmount = items.reduce((s, i) => s + i.amount, 0)
+   332→    const grossValue = packageAmount + itemsAmount
+   333→    const discountAmount = opts.discountType === 'PERCENT' ? (grossValue * opts.discount) / 100 : opts.discount
+   334→    const taxableValue = grossValue - discountAmount
+   335→    const gstAmount = (taxableValue * gstRate) / 100
+   336→    const totalPayable = taxableValue + gstAmount
+   337→    return { bathrooms, totalArea, packageId: pkg.id, packageName: pkg.name, packageRate: pkg.pricePerSqft, packageAmount, items, itemsAmount, grossValue, discountType: opts.discountType, discount: opts.discount, discountAmount, taxableValue, gstRate, gstAmount, totalPayable }
+   338→  }
+   339→
+   340→  async function createDemoQuotation(opts: {
+   341→    customerName: string
+   342→    createdById: string
+   343→    status: string
+   344→    versionType: string
+   345→    validityDays: number
+   346→    createdDaysAgo: number
+   347→    bathrooms: Array<{ name: string; type: string; length: number; width: number; height?: number }>
+   348→    packageName: string
+   349→    tileName: string
+   350→    fixtures: Array<{ material: string; qty: number }>
+   351→    addons: Array<{ material: string; qty: number }>
+   352→    consultation: boolean
+   353→    discountType: 'FLAT' | 'PERCENT'
+   354→    discount: number
+   355→  }) {
+   356→    const exists = await db.quotation.findFirst({ where: { customer: { name: opts.customerName } } })
+   357→    if (exists) return exists
+   358→    const customer = await db.customer.findFirst({ where: { name: opts.customerName } })
+   359→    if (!customer) return null
+   360→    const lead = await db.lead.findFirst({ where: { customerId: customer.id } })
+   361→    const count = await db.quotation.count()
+   362→    const quotationNumber = `ABS-Q-${String(245 + count).padStart(6, '0')}`
+   363→    const v = await buildVersionData(opts)
+   364→    const createdAt = daysAgo(opts.createdDaysAgo)
+   365→    const quotation = await db.quotation.create({
+   366→      data: {
+   367→        quotationNumber,
+   368→        customerId: customer.id,
+   369→        leadId: lead?.id,
+   370→        createdById: opts.createdById,
+   371→        status: opts.status,
+   372→        validityDays: opts.validityDays,
+   373→        createdAt,
+   374→        updatedAt: createdAt,
+   375→      },
+   376→    })
+   377→    const version = await db.quotationVersion.create({
+   378→      data: {
+   379→        quotationId: quotation.id,
+   380→        versionNumber: 1,
+   381→        versionType: opts.versionType,
+   382→        status: opts.status,
+   383→        totalArea: v.totalArea,
+   384→        packageId: v.packageId,
+   385→        packageName: v.packageName,
+   386→        packageRate: v.packageRate,
+   387→        packageAmount: v.packageAmount,
+   388→        itemsAmount: v.itemsAmount,
+   389→        grossValue: v.grossValue,
+   390→        discountType: v.discountType,
+   391→        discount: v.discount,
+   392→        discountAmount: v.discountAmount,
+   393→        taxableValue: v.taxableValue,
+   394→        gstRate: v.gstRate,
+   395→        gstAmount: v.gstAmount,
+   396→        totalPayable: v.totalPayable,
+   397→        createdById: opts.createdById,
+   398→        createdAt,
+   399→        bathrooms: { create: v.bathrooms.map((b) => ({ name: b.name, type: b.type, length: b.length, width: b.width, height: b.height ?? null, areaSqft: b.areaSqft })) },
+   400→        items: { create: v.items.map((i) => ({ section: i.section, materialId: i.materialId, name: i.name, quantity: i.quantity, unit: i.unit, rate: i.rate, amount: i.amount })) },
+   401→      },
+   402→    })
+   403→    await db.quotation.update({ where: { id: quotation.id }, data: { versions: { set: [{ id: version.id }] } } })
+   404→    return quotation
+   405→  }
+   406→
+   407→  // Q1 — Priyadarshini (converted → order-like pipeline)
+   408→  await createDemoQuotation({
+   409→    customerName: 'Priyadarshini', createdById: sa1.id, status: 'PAYMENT_RECEIVED', versionType: 'UPGRADED',
+   410→    validityDays: 30, createdDaysAgo: 25,
+   411→    bathrooms: [{ name: 'Master Bathroom', type: 'MASTER', length: 9, width: 5, height: 10 }],
+   412→    packageName: 'Premium', tileName: 'Vitrified Tile',
+   413→    fixtures: [{ material: 'Premium Vanity', qty: 1 }, { material: 'Rain Shower', qty: 1 }, { material: 'Wall Hung WC', qty: 1 }, { material: 'Counter Basin', qty: 1 }, { material: 'Diverter', qty: 1 }, { material: 'Health Faucet', qty: 1 }, { material: 'Angle Valve', qty: 2 }],
+   414→    addons: [{ material: 'LED Mirror', qty: 1 }, { material: 'Shower Enclosure', qty: 1 }],
+   415→    consultation: true, discountType: 'FLAT', discount: 5000,
+   416→  })
+   417→  // Q2 — Kavya Nair (quote shared → follow-up pipeline)
+   418→  await createDemoQuotation({
+   419→    customerName: 'Kavya Nair', createdById: admin1.id, status: 'QUOTE_SHARED', versionType: 'INITIAL',
+   420→    validityDays: 30, createdDaysAgo: 6,
+   421→    bathrooms: [{ name: 'Common Bathroom', type: 'COMMON', length: 7, width: 4, height: 9.5 }],
+   422→    packageName: 'Basic', tileName: 'Ceramic Tile',
+   423→    fixtures: [{ material: 'Standard Vanity', qty: 1 }, { material: 'Standard Shower', qty: 1 }, { material: 'Floor Mounted WC', qty: 1 }, { material: 'Wall Hung Basin', qty: 1 }, { material: 'Basin Faucet', qty: 1 }, { material: 'Health Faucet', qty: 1 }],
+   424→    addons: [], consultation: true, discountType: 'PERCENT', discount: 3,
+   425→  })
+   426→  // Q3 — Rohit Shetty (published, follow-up)
+   427→  await createDemoQuotation({
+   428→    customerName: 'Rohit Shetty', createdById: admin2.id, status: 'PUBLISHED', versionType: 'INITIAL',
+   429→    validityDays: 30, createdDaysAgo: 4,
+   430→    bathrooms: [
+   431→      { name: 'Master Bathroom', type: 'MASTER', length: 10, width: 6, height: 10 },
+   432→      { name: 'Powder Room', type: 'POWDER_ROOM', length: 4, width: 3, height: 9 },
+   433→    ],
+   434→    packageName: 'Luxury', tileName: 'Vitrified Tile',
+   435→    fixtures: [{ material: 'Luxury Vanity', qty: 1 }, { material: 'Rain Shower', qty: 1 }, { material: 'Wall Hung WC', qty: 1 }, { material: 'Designer Basin', qty: 1 }, { material: 'Diverter', qty: 1 }, { material: 'Angle Valve', qty: 3 }],
+   436→    addons: [{ material: 'Bath Tub', qty: 1 }, { material: 'LED Mirror', qty: 1 }],
+   437→    consultation: true, discountType: 'FLAT', discount: 10000,
+   438→  })
+   439→  // Q4 — Lakshmi Iyer (draft)
+   440→  await createDemoQuotation({
+   441→    customerName: 'Lakshmi Iyer', createdById: admin2.id, status: 'DRAFT', versionType: 'INITIAL',
+   442→    validityDays: 30, createdDaysAgo: 1,
+   443→    bathrooms: [{ name: 'Attached Bathroom', type: 'ATTACHED', length: 6, width: 4, height: 9 }],
+   444→    packageName: 'Premium', tileName: 'Ceramic Tile',
+   445→    fixtures: [{ material: 'Premium Vanity', qty: 1 }, { material: 'Premium Shower', qty: 1 }, { material: 'Floor Mounted WC', qty: 1 }],
+   446→    addons: [{ material: 'LED Mirror', qty: 1 }],
+   447→    consultation: false, discountType: 'FLAT', discount: 0,
+   448→  })
+   449→  console.log('✓ quotations')
+   450→
+   451→  console.log('Seed complete ✔')
+   452→  console.log('Super Admin 1: syedsadat@auravixbathstudio.com / steve@1234JOBS')
+   453→  console.log('Super Admin 2: syedshams@auravixbathstudio.com / white@0007teek')
+   454→  console.log('Admin demo:    rajesh@auravixbathstudio.com / admin@1234')
+   455→  console.log('Admin demo:    priya@auravixbathstudio.com / admin@1234')
+   456→}
+   457→
+   458→main()
+   459→  .catch((e) => {
+   460→    console.error(e)
+   461→    process.exit(1)
+   462→  })
+   463→  .finally(() => db.$disconnect())
+   464→
