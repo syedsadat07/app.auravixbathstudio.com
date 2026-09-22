@@ -342,3 +342,26 @@ Stage Summary:
 - PRODUCTION-READY: AURAVIX BATH STUDIO CRM + quotation engine fully functional at /
 - Credentials: syedsadat@auravixbathstudio.com / steve@1234JOBS · syedshams@auravixbathstudio.com / white@0007teek (Super Admins); rajesh@ & priya@auravixbathstudio.com / admin@1234 (Admins)
 - Engine verified: 45 sq.ft × ₹3,500 = ₹1,57,500 + items − discount + 18% GST = whole-rupee totals; server-authoritative pricing from master data
+
+---
+Task ID: 5
+Agent: Lead (main orchestrator)
+Task: Replace seeded materials with real product catalog from user's Google Sheet (with SKUs) + fetch product photos from product links
+
+Work Log:
+- Attempted to read Google Sheet 1AYv06R4xEslcgJ-A9eqrAKR4Q15YJC4AigS5MaWdf4A via 5 methods: direct CSV export, gviz/tq CSV, htmlembed, /pub endpoint, agent-browser, page_reader — ALL redirect to accounts.google.com sign-in; sheet is PRIVATE (restricted access)
+- No spreadsheet file in upload/ folder (only the 6 MakeMyBath reference screenshots)
+- Built scripts/import-products.mjs — production import pipeline:
+  * Input: CSV file path OR public Google Sheet URL (auto-converts /edit URLs to gviz CSV export)
+  * Robust CSV parser (RFC-4180: quoted cells, embedded commas/newlines, BOM)
+  * Auto column detection with alias lists (name/product, sku/code, price/mrp/rate, category, brand, unit, product link, image url, coverage, wastage, description) — case/punctuation-insensitive
+  * Price normalizer (strips ₹/INR/commas), unit mapper (sq.ft→AREA rule, box→AREA, set/piece→PIECE, sq.m/meter/kg/litre), wastage %, coverage
+  * REPLACE strategy: nulls QuotationItem.materialId per removed material first (historic quote items keep name/rate/amount snapshot), then material.deleteMany(), creates missing categories, inserts new materials (ACTIVE, createdById = first Super Admin, audit log PRODUCT_IMPORT written)
+  * Photo pipeline per product: CSV image URL → else product link page fetch → og:image → twitter:image → JSON-LD image → large img heuristic; download w/ UA + 25s AbortController; sharp → 512x512 cover palette PNG → public/materials/{sku-or-name-slug}.png; failures logged and skipped (never aborts run)
+- Verified without polluting DB: dry-run on sample CSV (4 rows, varied headers) parsed & mapped perfectly; unit-tested photo helpers — unsplash image downloaded+optimized 98KB PNG, unreachable site (parryware timeout) and bot-protected site (jaquar 403) both fail gracefully and continue
+- Restructured script with import.meta.main guard + exported helpers for testability; CLI prints parsed product table before mutating anything
+
+Stage Summary:
+- BLOCKER: sheet is private — needs user action: (a) Share → General access → Anyone with the link → Viewer, or (b) File → Share → Publish to web, or (c) upload CSV/Excel here
+- Once unblocked, ONE command finishes the whole task: bun scripts/import-products.mjs "<sheet-url|csv-path>"
+- DB untouched this round; all 21 demo materials still in place
