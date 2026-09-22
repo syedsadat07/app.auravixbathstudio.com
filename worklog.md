@@ -365,3 +365,26 @@ Stage Summary:
 - BLOCKER: sheet is private — needs user action: (a) Share → General access → Anyone with the link → Viewer, or (b) File → Share → Publish to web, or (c) upload CSV/Excel here
 - Once unblocked, ONE command finishes the whole task: bun scripts/import-products.mjs "<sheet-url|csv-path>"
 - DB untouched this round; all 21 demo materials still in place
+
+---
+Task ID: 6
+Agent: Lead (main orchestrator)
+Task: Import real product catalog from company Google Sheet (SKUs + prices + product links) replacing demo materials; fetch product photos from links
+
+Work Log:
+- User opened sheet sharing (was private in Task 5) — gviz CSV endpoint now returns data
+- Analyzed sheet structure: Block 1 = 20-item standard kit (cols 3-6: name/price/code/link) + "Total ₹81,070" row; Block 2 = 42-row variant catalog with group-name carry-forward (Commode ×5, Wash Basin ×5, 3-way diverter ×5, Health faucet ×4, Angle cock flange ×5, spout ×4, Floor drain cover ×4, etc.)
+- Link triage: jaquar.com + global.jaquar.com = 403 bot-blocked (curl + headless browser both denied); vikingindia.com reachable (1 direct jpg + 1 product page); 3× share.google short links = Google Images shares redirecting to imgurl=/imgrefurl= params (moglix CDN direct images)
+- Built scripts/import-auravix-sheet.mjs (bespoke importer): header/Total-row skips, group carry-forward, SKU normalization dedupe (7 dups: ALD-CHR-573, SHA-CHR-479L450, KUP-CHR-35783NKPM, SPJ-CHR-35429PM, OPP-CHR-15053PM, ART-48516, JDS-WHT-25907N — kept first occurrence, logged conflicts), category mapping (Sanitaryware 11 / Wash Basin 5 / Faucets & Mixers 22 / Shower System 9 / Waste & Drainage 8), name enrichment from product-URL slugs ("Commode – Rimless Back To Wall WC Solo" etc.), brand inference (Jaquar/Viking/Plantex), same-name disambiguation via differing SKU segment (e.g. Shower arm 280mm (BLM))
+- Photo pipeline 4-tier: direct image → reachable page og:image → share.google imgurl resolution (curl -w url_effective; bun fetch failed, execFile curl worked) → z-ai image-search fallback (SKU-only queries rarely hit; descriptive queries work: EWC/cistern/floor-drain/basin-mixer/diverter correct)
+- z-ai image-search gotchas fixed: -o flag ignored (parse stdout JSON instead); HTTP 429 rate limit after ~50 rapid calls (fixed via 30s spacing + 75s backoff retries + serial execution; 4 parallel workers caused the throttle)
+- DB replace: quotation items' materialId nulled (snapshots preserved), 22 demo materials deleted, 55 imported (piece/PIECE/coverage 1/wastage 0), legacy empty categories dropped, PRODUCT_IMPORT audit logged
+- scripts/fill-missing-images.mjs: serial retry fill with bespoke per-SKU queries → all 55/55 have photos; scripts/_fix2.mjs re-searched 2 mismatched images (shower arm, shower head) with refined queries — both now correct product shots
+- WIZARD FIX (src/components/views/quotation-wizard-view.tsx): fixture groups were hardcoded to old category names (Vanity/Shower/WC/Basin/Faucets) → empty Fixtures step after catalog swap. Replaced with dynamic grouping: all categories except Tiles/Add-ons become fixture groups, sorted alphabetically. Verified groups render: Faucets & Mixers, Sanitaryware, Shower System, Wash Basin, Waste & Drainage
+- E2E: wizard flow 9×5 → Premium → fixtures (add ₹4,350 diverter) → preview TOTAL ₹1,90,983 = (1,57,500+4,350)×1.18 ✓; saved draft ABS-Q-000250 then deleted it + test customer + counter reset (DB clean); old quotes render from item snapshots
+- Cleanup: 10 unused legacy demo images removed (kept 53 used files, 3.3MB); lint 0 errors; dev.log clean (APIs 200)
+
+Stage Summary:
+- Catalog = 55 real products with real SKUs/prices/photos/brand/source links, 5 categories; historic quotations untouched
+- KNOWN ITEMS: LYR-CHR-38783NK has no price in sheet → imported ₹0 ACTIVE (set price in Materials admin); 3 floor-drain rows have no SKU codes; image-search photos are brand/product-type accurate but not guaranteed exact-model matches (jaquar.com blocks automated fetches) — SA can replace any photo via Materials → Edit
+- Scripts kept for reuse: import-products.mjs (generic CSV importer), import-auravix-sheet.mjs (this sheet), fill-missing-images.mjs (photo backfill)

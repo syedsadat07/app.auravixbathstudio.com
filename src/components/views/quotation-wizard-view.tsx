@@ -194,7 +194,8 @@ const STEPS = [
   { id: 'preview', label: 'Preview' },
 ] as const
 
-const FIXTURE_CATEGORIES = ['Vanity', 'Shower', 'WC', 'Basin', 'Faucets']
+/** categories excluded from the Fixtures step (they have dedicated steps) */
+const NON_FIXTURE_CATEGORIES = new Set(['Tiles', 'Add-ons'])
 const MAX_BATHROOMS = 6
 const MAX_QTY = 99
 
@@ -264,14 +265,20 @@ export default function QuotationWizardView() {
     return map
   }, [materials])
   const tileMaterials = useMemo(() => materials.filter((m) => m.category?.name === 'Tiles'), [materials])
-  const fixtureGroups = useMemo(
-    () =>
-      FIXTURE_CATEGORIES.map((name) => ({
-        name,
-        items: materials.filter((m) => m.category?.name === name),
-      })).filter((g) => g.items.length > 0),
-    [materials]
-  )
+  // Dynamic grouping: every catalogue category that isn't handled by a dedicated step
+  // (Tiles / Add-ons) becomes a fixture group — resilient to category renames.
+  const fixtureGroups = useMemo(() => {
+    const groups = new Map<string, MaterialRow[]>()
+    for (const m of materials) {
+      const cat = m.category?.name
+      if (!cat || NON_FIXTURE_CATEGORIES.has(cat)) continue
+      if (!groups.has(cat)) groups.set(cat, [])
+      groups.get(cat)!.push(m)
+    }
+    return [...groups.entries()]
+      .map(([name, items]) => ({ name, items }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [materials])
   const addonMaterials = useMemo(() => materials.filter((m) => m.category?.name === 'Add-ons'), [materials])
 
   // ----- settings-derived values -----
