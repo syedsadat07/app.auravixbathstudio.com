@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
 
-const SECRET = process.env.AUTH_SECRET || 'auravix-bath-studio-dev-secret-2026'
+const SECRET = process.env.AUTH_SECRET || process.env.JWT_SECRET || 'auravix-bath-studio-dev-secret-2026'
 export const SESSION_COOKIE = 'abs_session'
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7 // 7 days
 
