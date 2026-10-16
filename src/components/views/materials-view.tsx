@@ -235,7 +235,10 @@ export default function MaterialsView() {
   }
 
   async function handleImageFile(file: File) {
-    if (!/^image\/(jpeg|jpg|png|webp)$/.test(file.type)) {
+    const isImage = file.type
+      ? /^image\/(jpe?g|png|webp|pjpeg)$/i.test(file.type)
+      : /\.(jpe?g|png|webp)$/i.test(file.name)
+    if (!isImage) {
       toast.error('Only JPG, PNG or WebP images are allowed.')
       return
     }
@@ -291,7 +294,7 @@ export default function MaterialsView() {
         coverageUnit: form.coverageUnit,
         wastagePercent: wastage,
         quantityRule: form.quantityRule,
-        imageUrl: form.imageUrl || undefined,
+        imageUrl: form.imageUrl ? form.imageUrl.trim() : (editing ? null : undefined),
       }
       if (editing) {
         await apiPatch(`/api/materials/${editing.id}`, payload)
