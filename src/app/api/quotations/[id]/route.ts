@@ -80,19 +80,32 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           totalPayable: current.totalPayable,
           createdAt: current.createdAt,
           createdByName: current.createdBy.name,
-          bathrooms: bathrooms.map((b) => ({
-            id: b.id,
-            name: b.name,
-            type: b.type,
-            length: b.length,
-            width: b.width,
-            height: b.height,
-            areaSqft: b.areaSqft,
-          })),
+          bathrooms: bathrooms.map((b) => {
+            let breakdown = null
+            if (b.breakdown) {
+              try {
+                breakdown = JSON.parse(b.breakdown)
+              } catch {}
+            }
+            return {
+              id: b.id,
+              name: b.name,
+              type: b.type,
+              length: b.length,
+              width: b.width,
+              height: b.height,
+              areaSqft: b.areaSqft,
+              unit: b.unit ?? 'ft',
+              wallAreaSqft: b.wallAreaSqft ?? 0,
+              openingsArea: b.openingsArea ?? 0,
+              breakdown,
+            }
+          }),
           items: items.map((i) => ({
             id: i.id,
             section: i.section,
             materialId: i.materialId,
+            bathroomId: (i as any).bathroomId ?? null,
             name: i.name,
             quantity: i.quantity,
             unit: i.unit,

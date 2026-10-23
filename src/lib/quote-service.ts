@@ -9,10 +9,20 @@ import { Prisma, type Material, type Quotation } from '@prisma/client'
 import { db } from '@/lib/db'
 import {
   calcAreaMaterialQuantity,
+  calcBathroomBreakdown,
+  calcCombinedQuotation,
   calcQuotation,
   computeBathroomArea,
+  computeFloorArea,
+  computeWallArea,
   round2,
+  roundMoney,
+  type BathroomBreakdownResult,
+  type BathroomInput,
+  type BathroomItemInput,
   type CalcResult,
+  type CombinedQuotationResult,
+  type MeasurementUnit,
 } from '@/lib/calc'
 import { ApiError, isSuperAdmin, type AuthUser } from '@/lib/auth'
 
@@ -32,9 +42,21 @@ export interface QuoteCustomerInput {
 export interface QuoteBathroomInput {
   name?: string
   type?: string
+  unit?: MeasurementUnit
   length: number
   width: number
   height?: number
+  openingsArea?: number
+  floorAreaSqft?: number
+  wallAreaSqft?: number
+  tiles?: BathroomItemInput[]
+  fixtures?: BathroomItemInput[]
+  accessories?: BathroomItemInput[]
+  labour?: BathroomItemInput[]
+  additionalWork?: BathroomItemInput[]
+  discountType?: 'FLAT' | 'PERCENT'
+  discount?: number
+  gstRate?: number
 }
 
 export interface QuotePayload {
@@ -139,24 +161,42 @@ function validateBathrooms(payload: QuotePayload) {
 
   return input.map((raw, index) => {
     const b = (raw ?? {}) as QuoteBathroomInput
-    const name = typeof b.name === 'string' ? b.name.trim() : ''
-    const type = typeof b.type === 'string' ? b.type.trim() : ''
+    const name = typeof b.name === 'string' && b.name.trim() ? b.name.trim() : `Bathroom ${index + 1}`
+    const type = typeof b.type === 'string' && b.type.trim() ? b.type.trim() : 'COMMON'
+    const unit: MeasurementUnit = b.unit === 'mm' ? 'mm' : 'ft'
     const length = toNumber(b.length)
     const width = toNumber(b.width)
 
     if (!name) throw new ApiError(400, `Bathroom #${index + 1}: a name is required.`)
-    if (!type) throw new ApiError(400, `Bathroom "${name}": a type is required.`)
     if (!(length > 0)) throw new ApiError(400, `Bathroom "${name}": length must be a number greater than 0.`)
     if (!(width > 0)) throw new ApiError(400, `Bathroom "${name}": width must be a number greater than 0.`)
 
     const height = toNumber(b.height ?? NaN)
+    const validHeight = Number.isFinite(height) && height > 0 ? height : 0
+    const openingsArea = toNumber(b.openingsArea ?? 0)
+    const validOpenings = Number.isFinite(openingsArea) && openingsArea > 0 ? openingsArea : 0
+
+    const floorAreaSqft = computeFloorArea(length, width, unit)
+    const wallAreaSqft = computeWallArea(length, width, validHeight, unit, validOpenings)
+
     return {
       name,
       type,
+      unit,
       length,
       width,
-      height: Number.isFinite(height) && height > 0 ? height : null,
-      areaSqft: computeBathroomArea(length, width),
+      height: validHeight > 0 ? validHeight : null,
+      openingsArea: validOpenings,
+      floorAreaSqft,
+      wallAreaSqft,
+      tiles: Array.isArray(b.tiles) ? b.tiles : [],
+      fixtures: Array.isArray(b.fixtures) ? b.fixtures : [],
+      accessories: Array.isArray(b.accessories) ? b.accessories : [],
+      labour: Array.isArray(b.labour) ? b.labour : [],
+      additionalWork: Array.isArray(b.additionalWork) ? b.additionalWork : [],
+      discountType: b.discountType === 'PERCENT' ? ('PERCENT' as const) : ('FLAT' as const),
+      discount: toNumber(b.discount ?? 0) || 0,
+      gstRate: toNumber(b.gstRate ?? NaN),
     }
   })
 }
@@ -261,8 +301,8 @@ export async function createVersionFromPayload(opts: {
     if (!quotation) throw new ApiError(400, 'A quotation is required to create a version.')
 
     // 1) Validate bathrooms
-    const bathrooms = validateBathrooms(payload)
-    const totalArea = round2(bathrooms.reduce((sum, b) => sum + b.areaSqft, 0))
+    const validatedBathrooms = validateBathrooms(payload)
+    const totalArea = round2(validatedBathrooms.reduce((sum, b) => sum + b.floorAreaSqft, 0))
 
     // 2) Package (rate = pricePerSqft)
     const pkg = await loadPackage(tx, payload?.packageId)
@@ -276,8 +316,145 @@ export async function createVersionFromPayload(opts: {
     const fixtures = await loadQtyMaterials(tx, selections.fixtures, 'fixture', totalArea, true)
     const addons = await loadQtyMaterials(tx, selections.addons, 'add-on', totalArea, false)
 
-    // 5) Item rows — snapshot name/unit/rate at quote time
-    const items: Array<{
+    // 5) Build bathroom-wise breakdowns
+    // For each bathroom, if items were not individually passed, distribute materials/tiles appropriately
+    const bathroomInputs: BathroomInput[] = validatedBathrooms.map((b, idx) => {
+      const bTiles: BathroomItemInput[] = b.tiles && b.tiles.length > 0 ? [...b.tiles] : []
+      const bFixtures: BathroomItemInput[] = b.fixtures && b.fixtures.length > 0 ? [...b.fixtures] : []
+      const bAccessories: BathroomItemInput[] = b.accessories && b.accessories.length > 0 ? [...b.accessories] : []
+      const bLabour: BathroomItemInput[] = b.labour && b.labour.length > 0 ? [...b.labour] : []
+      const bAdditional: BathroomItemInput[] = b.additionalWork && b.additionalWork.length > 0 ? [...b.additionalWork] : []
+
+      // If bathroom does not have explicit tiles, allocate from global tiles selection based on bathroom area
+      if (bTiles.length === 0 && tiles.length > 0) {
+        for (const m of tiles) {
+          const qty = calcAreaMaterialQuantity(b.floorAreaSqft, m.coverage, m.wastagePercent)
+          bTiles.push({
+            name: `${m.name} (Floor)`,
+            section: 'TILES',
+            materialId: m.id,
+            quantity: qty,
+            unit: m.unit,
+            rate: m.price,
+            amount: round2(qty * m.price),
+          })
+          if (b.wallAreaSqft > 0) {
+            const wallQty = calcAreaMaterialQuantity(b.wallAreaSqft, m.coverage, m.wastagePercent)
+            bTiles.push({
+              name: `${m.name} (Wall)`,
+              section: 'TILES',
+              materialId: m.id,
+              quantity: wallQty,
+              unit: m.unit,
+              rate: m.price,
+              amount: round2(wallQty * m.price),
+            })
+          }
+        }
+      }
+
+      // If bathroom does not have explicit fixtures, allocate standard package proportion
+      if (bFixtures.length === 0 && fixtures.length > 0) {
+        // Distribute proportionally across bathrooms
+        for (const { material: m, quantity } of fixtures) {
+          const bathroomShare = Math.max(1, Math.round(quantity / validatedBathrooms.length))
+          bFixtures.push({
+            name: m.name,
+            section: 'FIXTURES',
+            materialId: m.id,
+            quantity: bathroomShare,
+            unit: m.unit,
+            rate: m.price,
+            amount: round2(bathroomShare * m.price),
+          })
+        }
+      }
+
+      // If bathroom does not have explicit accessories, allocate from add-ons
+      if (bAccessories.length === 0 && addons.length > 0) {
+        for (const { material: m, quantity } of addons) {
+          const bathroomShare = Math.max(1, Math.round(quantity / validatedBathrooms.length))
+          bAccessories.push({
+            name: m.name,
+            section: 'ACCESSORIES',
+            materialId: m.id,
+            quantity: bathroomShare,
+            unit: m.unit,
+            rate: m.price,
+            amount: round2(bathroomShare * m.price),
+          })
+        }
+      }
+
+      // If no labour is specified, add standard bathroom labour based on area & fittings
+      if (bLabour.length === 0) {
+        const tilingLabourRate = 45 // ₹45/sq.ft for floor & wall tiling
+        const totalTileArea = round2(b.floorAreaSqft + b.wallAreaSqft)
+        bLabour.push({
+          name: 'Tiling & Surface Prep Labour',
+          section: 'LABOUR',
+          quantity: totalTileArea,
+          unit: 'sq.ft',
+          rate: tilingLabourRate,
+          amount: round2(totalTileArea * tilingLabourRate),
+        })
+        bLabour.push({
+          name: 'Plumbing & Fixtures Installation',
+          section: 'LABOUR',
+          quantity: 1,
+          unit: 'lot',
+          rate: 12000,
+          amount: 12000,
+        })
+      }
+
+      // If no additional work is specified, add waterproofing as essential baseline
+      if (bAdditional.length === 0) {
+        bAdditional.push({
+          name: 'Epoxy Grouting & Waterproofing Barrier',
+          section: 'ADDITIONAL',
+          quantity: b.floorAreaSqft,
+          unit: 'sq.ft',
+          rate: 65,
+          amount: round2(b.floorAreaSqft * 65),
+        })
+      }
+
+      return {
+        name: b.name,
+        type: b.type,
+        unit: b.unit,
+        length: b.length,
+        width: b.width,
+        height: b.height,
+        openingsArea: b.openingsArea,
+        floorAreaSqft: b.floorAreaSqft,
+        wallAreaSqft: b.wallAreaSqft,
+        tiles: bTiles,
+        fixtures: bFixtures,
+        accessories: bAccessories,
+        labour: bLabour,
+        additionalWork: bAdditional,
+        discountType: b.discountType,
+        discount: b.discount,
+        gstRate: Number.isFinite(b.gstRate) ? b.gstRate : settings.gstRate,
+      }
+    })
+
+    // 6) Calculate combined quotation
+    const projectDiscountType = payload?.discountType === 'PERCENT' ? 'PERCENT' : 'FLAT'
+    const projectDiscountRaw = toNumber(payload?.discount)
+    const projectDiscount = Number.isFinite(projectDiscountRaw) && projectDiscountRaw > 0 ? projectDiscountRaw : 0
+
+    const combined = calcCombinedQuotation({
+      bathrooms: bathroomInputs,
+      projectDiscountType,
+      projectDiscount,
+      gstRate: settings.gstRate,
+    })
+
+    // Flatten all items across bathrooms for global items table + consultation
+    const allItems: Array<{
       section: string
       materialId: string | null
       name: string
@@ -287,34 +464,28 @@ export async function createVersionFromPayload(opts: {
       amount: number
     }> = []
 
-    for (const m of tiles) {
-      const quantity = calcAreaMaterialQuantity(totalArea, m.coverage, m.wastagePercent)
-      items.push({ section: 'TILES', materialId: m.id, name: m.name, quantity, unit: m.unit, rate: m.price, amount: round2(quantity * m.price) })
+    for (const b of combined.bathrooms) {
+      for (const t of b.tiles) {
+        allItems.push({ section: 'TILES', materialId: t.materialId ?? null, name: `${b.name}: ${t.name}`, quantity: t.quantity, unit: t.unit, rate: t.rate, amount: t.amount ?? round2(t.quantity * t.rate) })
+      }
+      for (const f of b.fixtures) {
+        allItems.push({ section: 'FIXTURES', materialId: f.materialId ?? null, name: `${b.name}: ${f.name}`, quantity: f.quantity, unit: f.unit, rate: f.rate, amount: f.amount ?? round2(f.quantity * f.rate) })
+      }
+      for (const a of b.accessories) {
+        allItems.push({ section: 'ADDONS', materialId: a.materialId ?? null, name: `${b.name}: ${a.name}`, quantity: a.quantity, unit: a.unit, rate: a.rate, amount: a.amount ?? round2(a.quantity * a.rate) })
+      }
+      for (const l of b.labour) {
+        allItems.push({ section: 'OTHER', materialId: null, name: `${b.name}: ${l.name}`, quantity: l.quantity, unit: l.unit, rate: l.rate, amount: l.amount ?? round2(l.quantity * l.rate) })
+      }
+      for (const add of b.additionalWork) {
+        allItems.push({ section: 'OTHER', materialId: null, name: `${b.name}: ${add.name}`, quantity: add.quantity, unit: add.unit, rate: add.rate, amount: add.amount ?? round2(add.quantity * add.rate) })
+      }
     }
-    for (const { material: m, quantity } of fixtures) {
-      items.push({ section: 'FIXTURES', materialId: m.id, name: m.name, quantity, unit: m.unit, rate: m.price, amount: round2(quantity * m.price) })
-    }
-    for (const { material: m, quantity } of addons) {
-      items.push({ section: 'ADDONS', materialId: m.id, name: m.name, quantity, unit: m.unit, rate: m.price, amount: round2(quantity * m.price) })
-    }
+
     if (selections.consultation === true) {
       const fee = settings.consultationFee
-      items.push({ section: 'OTHER', materialId: null, name: 'Design Consultation', quantity: 1, unit: 'set', rate: fee, amount: round2(fee) })
+      allItems.push({ section: 'OTHER', materialId: null, name: 'Design Consultation', quantity: 1, unit: 'set', rate: fee, amount: round2(fee) })
     }
-
-    // 6) Authoritative calculation
-    const discountType = payload?.discountType === 'PERCENT' ? 'PERCENT' : 'FLAT'
-    const discountRaw = toNumber(payload?.discount)
-    const discount = Number.isFinite(discountRaw) && discountRaw > 0 ? discountRaw : 0
-
-    const totals = calcQuotation({
-      bathrooms: bathrooms.map((b) => ({ length: b.length, width: b.width })),
-      packageRate: pkg.pricePerSqft,
-      items: items.map((i) => ({ quantity: i.quantity, rate: i.rate })),
-      discountType,
-      discount,
-      gstRate: settings.gstRate,
-    })
 
     // 7) Publish permission
     const publishRequested = payload?.publish === true
@@ -333,41 +504,48 @@ export async function createVersionFromPayload(opts: {
       versionType = payload.versionType
     }
 
-    // 9) Persist version + bathrooms + items
+    // 9) Persist version + bathrooms (with full JSON breakdown) + items
+    const packageAmount = round2(combined.totalFloorArea * pkg.pricePerSqft)
+    const itemsAmount = round2(allItems.reduce((s, it) => s + it.amount, 0))
+
     const version = await tx.quotationVersion.create({
       data: {
         quotationId: quotation.id,
         versionNumber,
         versionType,
         status,
-        totalArea: totals.totalArea,
+        totalArea: combined.totalFloorArea,
         packageId: pkg.id,
         packageName: pkg.name,
         packageRate: pkg.pricePerSqft,
-        packageAmount: totals.packageAmount,
-        itemsAmount: totals.itemsAmount,
-        grossValue: totals.grossValue,
-        discountType,
-        discount: round2(discount),
-        discountAmount: totals.discountAmount,
-        taxableValue: totals.taxableValue,
+        packageAmount,
+        itemsAmount,
+        grossValue: combined.totalBathroomGross,
+        discountType: combined.projectDiscountType,
+        discount: round2(combined.projectDiscount),
+        discountAmount: combined.projectDiscountAmount,
+        taxableValue: combined.projectTaxableValue,
         gstRate: settings.gstRate,
-        gstAmount: totals.gstAmount,
-        totalPayable: totals.totalPayable,
+        gstAmount: combined.projectGstAmount,
+        totalPayable: combined.finalQuotationAmount,
         notes: optionalText(payload?.notes),
         createdById: user.id,
         bathrooms: {
-          create: bathrooms.map((b) => ({
+          create: combined.bathrooms.map((b) => ({
             name: b.name,
             type: b.type,
             length: b.length,
             width: b.width,
             height: b.height,
-            areaSqft: b.areaSqft,
+            unit: b.unit,
+            areaSqft: b.floorAreaSqft,
+            wallAreaSqft: b.wallAreaSqft,
+            openingsArea: b.openingsAreaSqft,
+            breakdown: JSON.stringify(b),
           })),
         },
         items: {
-          create: items.map((i) => ({
+          create: allItems.map((i) => ({
             section: i.section,
             materialId: i.materialId,
             name: i.name,
@@ -380,7 +558,18 @@ export async function createVersionFromPayload(opts: {
       },
     })
 
-    return { versionId: version.id, versionNumber, versionType, status, publishBlocked, totals }
+    const totalsResult: CalcResult = {
+      totalArea: combined.totalFloorArea,
+      packageAmount,
+      itemsAmount,
+      grossValue: combined.totalBathroomGross,
+      discountAmount: combined.projectDiscountAmount,
+      taxableValue: combined.projectTaxableValue,
+      gstAmount: combined.projectGstAmount,
+      totalPayable: combined.finalQuotationAmount,
+    }
+
+    return { versionId: version.id, versionNumber, versionType, status, publishBlocked, totals: totalsResult }
   }
 
   if (opts.tx) return run(opts.tx)

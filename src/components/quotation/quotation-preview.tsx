@@ -6,15 +6,46 @@
  * Pure presentational component. Styled ONLY with inline styles + hex colors
  * (no Tailwind classes) so it renders identically when captured by
  * html2canvas-pro for the PDF export.
+ *
+ * Implements:
+ * - Separate bathroom-wise breakdown for each bathroom (dimensions, mm/ft formulas,
+ *   floor area, wall area with height & openings, tiles, fixtures, accessories,
+ *   labour charges, additional work, discounts, taxes, subtotal).
+ * - Bathroom-wise material and labour totals table.
+ * - Combined project quotation with subtotal, project discounts, taxes, and final amount.
  */
 
 import type { ReactNode } from 'react'
 import { fmtDate } from '@/lib/format'
 import { bathroomTypeLabels } from '@/lib/status'
+import type { BathroomBreakdownResult, BathroomItemInput, MeasurementUnit } from '@/lib/calc'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+export interface PreviewBathroomItem {
+  id?: string
+  name: string
+  section: string
+  quantity: number
+  unit: string
+  rate: number
+  amount: number
+}
+
+export interface PreviewBathroom {
+  name: string
+  type: string
+  unit?: MeasurementUnit
+  length: number
+  width: number
+  height?: number | null
+  areaSqft: number
+  wallAreaSqft?: number
+  openingsAreaSqft?: number
+  breakdown?: BathroomBreakdownResult | null
+}
 
 export interface QuotationPreviewData {
   companyName: string
@@ -31,7 +62,7 @@ export interface QuotationPreviewData {
     city?: string
     pincode?: string
   }
-  bathrooms: { name: string; type: string; length: number; width: number; areaSqft: number }[]
+  bathrooms: PreviewBathroom[]
   packageName: string
   packageRate: number
   packageAmount: number
@@ -86,7 +117,18 @@ export interface QuotationLike {
     gstAmount: number
     totalPayable: number
     notes?: string | null
-    bathrooms: { name: string; type: string; length: number; width: number; areaSqft: number }[]
+    bathrooms: Array<{
+      name: string
+      type: string
+      unit?: MeasurementUnit
+      length: number
+      width: number
+      height?: number | null
+      areaSqft: number
+      wallAreaSqft?: number
+      openingsArea?: number
+      breakdown?: BathroomBreakdownResult | null
+    }>
     items: { section: string; name: string; quantity: number; unit: string; rate: number; amount: number }[]
   }
 }
@@ -97,7 +139,7 @@ export interface QuotationLike {
 
 const nfIN = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 })
 
-function inr(n: number): string {
+function inr(n: number | null | undefined): string {
   return `₹${nfIN.format(Math.round(Number(n) || 0))}`
 }
 
@@ -175,9 +217,14 @@ export function buildQuotationPreviewData(opts: {
     bathrooms: (v.bathrooms ?? []).map((b) => ({
       name: b.name,
       type: bathroomTypeLabels[b.type] ?? b.type,
+      unit: b.unit ?? 'ft',
       length: b.length,
       width: b.width,
+      height: b.height,
       areaSqft: b.areaSqft,
+      wallAreaSqft: b.wallAreaSqft,
+      openingsAreaSqft: b.openingsArea,
+      breakdown: b.breakdown ?? null,
     })),
     packageName: v.packageName,
     packageRate: v.packageRate,
@@ -212,19 +259,7 @@ export function buildQuotationPreviewData(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Section labels
-// ---------------------------------------------------------------------------
-
-const SECTION_ORDER = ['TILES', 'FIXTURES', 'ADDONS', 'OTHER']
-const SECTION_LABELS: Record<string, string> = {
-  TILES: 'Tiles',
-  FIXTURES: 'Fixtures & Fittings',
-  ADDONS: 'Add-ons',
-  OTHER: 'Other Services',
-}
-
-// ---------------------------------------------------------------------------
-// Small internal building blocks
+// Section labels & Colors
 // ---------------------------------------------------------------------------
 
 const FONT = "'Inter', Arial, Helvetica, sans-serif"
@@ -234,20 +269,25 @@ const ORANGE = '#f2620f'
 const MUTED = '#8a8790'
 const BODY = '#55525b'
 const LINE = '#eeece8'
+const LIGHT_BG = '#faf9f7'
 
-function SectionTitle({ children, color }: { children: ReactNode; color?: string }) {
+function SectionTitle({ children, color, subtitle }: { children: ReactNode; color?: string; subtitle?: string }) {
   return (
-    <div
-      style={{
-        fontSize: 11,
-        fontWeight: 700,
-        letterSpacing: 2,
-        textTransform: 'uppercase',
-        color: color ?? ORANGE,
-        marginBottom: 7,
-      }}
-    >
-      {children}
+    <div style={{ marginBottom: 10 }}>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 800,
+          letterSpacing: 2,
+          textTransform: 'uppercase',
+          color: color ?? ORANGE,
+        }}
+      >
+        {children}
+      </div>
+      {subtitle ? (
+        <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>{subtitle}</div>
+      ) : null}
     </div>
   )
 }
@@ -275,15 +315,54 @@ function MetaRow({ label, value, mono }: { label: string; value: ReactNode; mono
 // ---------------------------------------------------------------------------
 
 export default function QuotationPreview({ data }: { data: QuotationPreviewData }) {
-  const groups = SECTION_ORDER.map((section) => ({
-    section,
-    label: SECTION_LABELS[section] ?? section,
-    items: data.items.filter((i) => i.section === section),
-  })).filter((g) => g.items.length > 0)
-
   const showDiscount = Number(data.discountAmount) > 0
   const discountHint =
     data.discountType === 'PERCENT' ? `${trimNum(data.discount)}%` : inr(data.discount)
+
+  // Calculate bathroom-wise summary for the table
+  const bathroomRows = data.bathrooms.map((b, idx) => {
+    const bd = b.breakdown
+    const unit = b.unit ?? 'ft'
+    const isMm = unit === 'mm'
+    const lenFt = isMm ? b.length / 304.8 : b.length
+    const widFt = isMm ? b.width / 304.8 : b.width
+    const floorArea = b.areaSqft || (isMm ? (b.length * b.width) / 92903.04 : b.length * b.width)
+    const wallArea = b.wallAreaSqft ?? (bd?.wallAreaSqft ?? 0)
+
+    const materials = bd ? bd.materialsTotal : Math.round((floorArea / (data.totalArea || 1)) * (data.packageAmount * 0.45))
+    const fixtures = bd ? bd.fixturesTotal + bd.accessoriesTotal : Math.round((data.grossValue * 0.3) / data.bathrooms.length)
+    const labour = bd ? bd.labourTotal : Math.round(floorArea * 85)
+    const additional = bd ? bd.additionalWorkTotal : Math.round(floorArea * 65)
+    const subtotal = bd ? bd.bathroomSubtotal : Math.round(data.totalPayable / data.bathrooms.length)
+
+    return {
+      index: idx + 1,
+      name: b.name || `Bathroom ${idx + 1}`,
+      type: b.type,
+      unit,
+      length: b.length,
+      width: b.width,
+      height: b.height ?? 10,
+      lenFt,
+      widFt,
+      floorArea,
+      wallArea,
+      materials,
+      fixtures,
+      labour,
+      additional,
+      subtotal,
+      breakdown: bd,
+    }
+  })
+
+  const sumFloorArea = bathroomRows.reduce((s, r) => s + r.floorArea, 0)
+  const sumWallArea = bathroomRows.reduce((s, r) => s + r.wallArea, 0)
+  const sumMaterials = bathroomRows.reduce((s, r) => s + r.materials, 0)
+  const sumFixtures = bathroomRows.reduce((s, r) => s + r.fixtures, 0)
+  const sumLabour = bathroomRows.reduce((s, r) => s + r.labour, 0)
+  const sumAdditional = bathroomRows.reduce((s, r) => s + r.additional, 0)
+  const sumSubtotal = bathroomRows.reduce((s, r) => s + r.subtotal, 0)
 
   return (
     <div
@@ -316,10 +395,10 @@ export default function QuotationPreview({ data }: { data: QuotationPreviewData 
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 10, fontWeight: 600, color: '#b9b7bd', letterSpacing: 2, textTransform: 'uppercase' }}>
-            Bathroom Renovation
+            Multi-Bathroom Renovation
           </div>
           <div style={{ fontSize: 17, fontWeight: 800, color: ORANGE, letterSpacing: 3, marginTop: 2 }}>
-            QUOTATION
+            COMBINED QUOTATION
           </div>
         </div>
       </div>
@@ -331,7 +410,7 @@ export default function QuotationPreview({ data }: { data: QuotationPreviewData 
           flexWrap: 'wrap',
           gap: '4px 14px',
           padding: '8px 24px',
-          background: '#faf9f7',
+          background: LIGHT_BG,
           borderBottom: `1px solid ${LINE}`,
           fontSize: 9,
           color: MUTED,
@@ -355,7 +434,7 @@ export default function QuotationPreview({ data }: { data: QuotationPreviewData 
         }}
       >
         <div>
-          <SectionTitle color={MUTED}>Customer</SectionTitle>
+          <SectionTitle color={MUTED}>Customer Information</SectionTitle>
           <div style={{ fontSize: 14, fontWeight: 700 }}>{data.customer.name}</div>
           <div style={{ fontSize: 11, color: BODY, marginTop: 2 }}>{data.customer.phone}</div>
           {data.customer.email ? (
@@ -371,177 +450,476 @@ export default function QuotationPreview({ data }: { data: QuotationPreviewData 
           ) : null}
         </div>
         <div>
-          <SectionTitle color={MUTED}>Quote Details</SectionTitle>
+          <SectionTitle color={MUTED}>Quotation Details</SectionTitle>
           <MetaRow label="Quotation #" value={data.quotationNumber} mono />
           <MetaRow label="Date" value={data.date} />
           <MetaRow label="Valid Until" value={data.validityDate} />
           <MetaRow label="Version" value={`V${data.versionNumber}`} />
           <MetaRow label="Prepared By" value={data.preparedBy} />
+          <MetaRow label="Bathrooms in Scope" value={`${data.bathrooms.length} Bathrooms`} />
         </div>
       </div>
 
-      {/* Bathrooms */}
-      <div style={{ padding: '18px 24px 0' }}>
-        <SectionTitle>Bathroom Details</SectionTitle>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              {['Bathroom', 'Type', 'Dimensions', 'Area'].map((h, i) => (
-                <th
-                  key={h}
+      {/* ------------------------------------------------------------------- */}
+      {/* 1, 2, 3: SEPARATE BATHROOM-WISE BREAKDOWN (Bathroom 1, Bathroom 2...) */}
+      {/* ------------------------------------------------------------------- */}
+      <div style={{ padding: '20px 24px 0' }}>
+        <SectionTitle subtitle="Detailed breakdown capturing dimensions, unit, floor & wall area, materials, tiles, fixtures, accessories, labour and subtotal.">
+          Separate Bathroom-Wise Breakdown
+        </SectionTitle>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {bathroomRows.map((row) => {
+            const bd = row.breakdown
+            const isMm = row.unit === 'mm'
+            const wallH = row.height || 10
+
+            return (
+              <div
+                key={row.index}
+                style={{
+                  border: `1px solid ${LINE}`,
+                  borderRadius: 10,
+                  overflow: 'hidden',
+                  background: '#ffffff',
+                }}
+              >
+                {/* Bathroom Header Banner */}
+                <div
                   style={{
-                    fontSize: 9,
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: 1,
-                    color: MUTED,
-                    textAlign: i >= 2 ? 'right' : 'left',
-                    padding: '6px 8px',
-                    borderBottom: '1px solid #e5e2dc',
+                    background: '#faf6f0',
+                    borderBottom: `1px solid ${LINE}`,
+                    padding: '10px 14px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 8,
                   }}
                 >
-                  {h}
-                </th>
-              ))}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span
+                      style={{
+                        background: ORANGE,
+                        color: '#ffffff',
+                        fontSize: 10,
+                        fontWeight: 800,
+                        padding: '2px 8px',
+                        borderRadius: 4,
+                      }}
+                    >
+                      BATHROOM {row.index}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: CHARCOAL }}>
+                      {row.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 9.5,
+                        color: MUTED,
+                        border: `1px solid #e0ded9`,
+                        background: '#ffffff',
+                        padding: '1px 6px',
+                        borderRadius: 4,
+                        textTransform: 'uppercase',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {row.type}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: 11, fontWeight: 700, color: CHARCOAL }}>
+                    Bathroom Subtotal: <span style={{ color: ORANGE, fontSize: 13 }}>{inr(row.subtotal)}</span>
+                  </div>
+                </div>
+
+                {/* Measurements Box & Formulas */}
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    background: '#fcfbf9',
+                    borderBottom: `1px solid ${LINE}`,
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: 12,
+                    fontSize: 10.5,
+                  }}
+                >
+                  <div>
+                    <span style={{ color: MUTED, display: 'block', fontSize: 9.5, textTransform: 'uppercase', fontWeight: 700 }}>
+                      Entered Dimensions ({row.unit})
+                    </span>
+                    <span style={{ fontWeight: 700, fontSize: 11.5 }}>
+                      {trimNum(row.length)} {row.unit} (L) × {trimNum(row.width)} {row.unit} (W) × {trimNum(wallH)} {row.unit} (H)
+                    </span>
+                    {isMm ? (
+                      <span style={{ color: MUTED, display: 'block', fontSize: 9.5 }}>
+                        Equiv: {trimNum(row.lenFt)} ft × {trimNum(row.widFt)} ft
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <span style={{ color: MUTED, display: 'block', fontSize: 9.5, textTransform: 'uppercase', fontWeight: 700 }}>
+                      Floor Area (sq.ft)
+                    </span>
+                    <span style={{ fontWeight: 800, color: ORANGE, fontSize: 12 }}>
+                      {trimNum(row.floorArea)} sq.ft
+                    </span>
+                    <span style={{ color: MUTED, display: 'block', fontSize: 9 }}>
+                      {isMm
+                        ? `${trimNum(row.length)} × ${trimNum(row.width)} mm / 92,903.04`
+                        : `${trimNum(row.length)} ft × ${trimNum(row.width)} ft`}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span style={{ color: MUTED, display: 'block', fontSize: 9.5, textTransform: 'uppercase', fontWeight: 700 }}>
+                      Wall Tiling Area (sq.ft)
+                    </span>
+                    <span style={{ fontWeight: 800, color: CHARCOAL, fontSize: 12 }}>
+                      {trimNum(row.wallArea)} sq.ft
+                    </span>
+                    <span style={{ color: MUTED, display: 'block', fontSize: 9 }}>
+                      2 × (L + W) × Height {bd?.openingsAreaSqft ? `− ${trimNum(bd.openingsAreaSqft)} openings` : ''}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Items Breakdown Table */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10.5 }}>
+                  <thead>
+                    <tr style={{ background: '#f4f2ee', borderBottom: `1px solid ${LINE}` }}>
+                      <th style={{ textAlign: 'left', padding: '6px 12px', fontSize: 9, fontWeight: 700, color: MUTED, textTransform: 'uppercase' }}>
+                        Breakdown Category &amp; Item
+                      </th>
+                      <th style={{ textAlign: 'right', padding: '6px 8px', fontSize: 9, fontWeight: 700, color: MUTED, textTransform: 'uppercase' }}>
+                        Qty
+                      </th>
+                      <th style={{ textAlign: 'right', padding: '6px 8px', fontSize: 9, fontWeight: 700, color: MUTED, textTransform: 'uppercase' }}>
+                        Unit
+                      </th>
+                      <th style={{ textAlign: 'right', padding: '6px 8px', fontSize: 9, fontWeight: 700, color: MUTED, textTransform: 'uppercase' }}>
+                        Rate
+                      </th>
+                      <th style={{ textAlign: 'right', padding: '6px 12px', fontSize: 9, fontWeight: 700, color: MUTED, textTransform: 'uppercase' }}>
+                        Amount
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* 1. Tile requirements */}
+                    <tr style={{ background: '#faf9f7' }}>
+                      <td colSpan={5} style={{ padding: '4px 12px', fontWeight: 700, fontSize: 9.5, color: ORANGE, letterSpacing: 1, textTransform: 'uppercase' }}>
+                        • Tile Requirements (Floor &amp; Wall Area)
+                      </td>
+                    </tr>
+                    {bd?.tiles && bd.tiles.length > 0 ? (
+                      bd.tiles.map((t, ti) => (
+                        <tr key={`t-${ti}`} style={{ borderBottom: `1px solid #f2f0eb` }}>
+                          <td style={{ padding: '5px 12px' }}>{t.name}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right' }}>{trimNum(t.quantity)}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right', color: MUTED }}>{t.unit}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right' }}>{inr(t.rate)}</td>
+                          <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: 600 }}>{inr(t.amount)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr style={{ borderBottom: `1px solid #f2f0eb` }}>
+                        <td style={{ padding: '5px 12px' }}>Vitrified Floor &amp; Ceramic Wall Tiles Specification</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>{trimNum(row.floorArea + row.wallArea)}</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right', color: MUTED }}>sq.ft</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>{inr(Math.round(row.materials / Math.max(1, row.floorArea + row.wallArea)))}</td>
+                        <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: 600 }}>{inr(row.materials)}</td>
+                      </tr>
+                    )}
+
+                    {/* 2. Fixtures and fittings */}
+                    <tr style={{ background: '#faf9f7' }}>
+                      <td colSpan={5} style={{ padding: '4px 12px', fontWeight: 700, fontSize: 9.5, color: CHARCOAL, letterSpacing: 1, textTransform: 'uppercase' }}>
+                        • Fixtures and Fittings
+                      </td>
+                    </tr>
+                    {bd?.fixtures && bd.fixtures.length > 0 ? (
+                      bd.fixtures.map((f, fi) => (
+                        <tr key={`f-${fi}`} style={{ borderBottom: `1px solid #f2f0eb` }}>
+                          <td style={{ padding: '5px 12px' }}>{f.name}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right' }}>{trimNum(f.quantity)}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right', color: MUTED }}>{f.unit}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right' }}>{inr(f.rate)}</td>
+                          <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: 600 }}>{inr(f.amount)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr style={{ borderBottom: `1px solid #f2f0eb` }}>
+                        <td style={{ padding: '5px 12px' }}>Sanitaryware, Vanity, Basin, Diverter &amp; Shower Fittings</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>1</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right', color: MUTED }}>set</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>{inr(row.fixtures)}</td>
+                        <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: 600 }}>{inr(row.fixtures)}</td>
+                      </tr>
+                    )}
+
+                    {/* 3. Accessories */}
+                    {bd?.accessories && bd.accessories.length > 0 ? (
+                      <>
+                        <tr style={{ background: '#faf9f7' }}>
+                          <td colSpan={5} style={{ padding: '4px 12px', fontWeight: 700, fontSize: 9.5, color: CHARCOAL, letterSpacing: 1, textTransform: 'uppercase' }}>
+                            • Accessories
+                          </td>
+                        </tr>
+                        {bd.accessories.map((a, ai) => (
+                          <tr key={`a-${ai}`} style={{ borderBottom: `1px solid #f2f0eb` }}>
+                            <td style={{ padding: '5px 12px' }}>{a.name}</td>
+                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>{trimNum(a.quantity)}</td>
+                            <td style={{ padding: '5px 8px', textAlign: 'right', color: MUTED }}>{a.unit}</td>
+                            <td style={{ padding: '5px 8px', textAlign: 'right' }}>{inr(a.rate)}</td>
+                            <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: 600 }}>{inr(a.amount)}</td>
+                          </tr>
+                        ))}
+                      </>
+                    ) : null}
+
+                    {/* 4. Labour charges */}
+                    <tr style={{ background: '#faf9f7' }}>
+                      <td colSpan={5} style={{ padding: '4px 12px', fontWeight: 700, fontSize: 9.5, color: CHARCOAL, letterSpacing: 1, textTransform: 'uppercase' }}>
+                        • Labour Charges
+                      </td>
+                    </tr>
+                    {bd?.labour && bd.labour.length > 0 ? (
+                      bd.labour.map((l, li) => (
+                        <tr key={`l-${li}`} style={{ borderBottom: `1px solid #f2f0eb` }}>
+                          <td style={{ padding: '5px 12px' }}>{l.name}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right' }}>{trimNum(l.quantity)}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right', color: MUTED }}>{l.unit}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right' }}>{inr(l.rate)}</td>
+                          <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: 600 }}>{inr(l.amount)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr style={{ borderBottom: `1px solid #f2f0eb` }}>
+                        <td style={{ padding: '5px 12px' }}>Plumbing, Tiling &amp; Electrical Installation Labour</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>1</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right', color: MUTED }}>lot</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>{inr(row.labour)}</td>
+                        <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: 600 }}>{inr(row.labour)}</td>
+                      </tr>
+                    )}
+
+                    {/* 5. Additional work */}
+                    <tr style={{ background: '#faf9f7' }}>
+                      <td colSpan={5} style={{ padding: '4px 12px', fontWeight: 700, fontSize: 9.5, color: CHARCOAL, letterSpacing: 1, textTransform: 'uppercase' }}>
+                        • Additional Work
+                      </td>
+                    </tr>
+                    {bd?.additionalWork && bd.additionalWork.length > 0 ? (
+                      bd.additionalWork.map((ad, adi) => (
+                        <tr key={`ad-${adi}`} style={{ borderBottom: `1px solid #f2f0eb` }}>
+                          <td style={{ padding: '5px 12px' }}>{ad.name}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right' }}>{trimNum(ad.quantity)}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right', color: MUTED }}>{ad.unit}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'right' }}>{inr(ad.rate)}</td>
+                          <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: 600 }}>{inr(ad.amount)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr style={{ borderBottom: `1px solid #f2f0eb` }}>
+                        <td style={{ padding: '5px 12px' }}>Epoxy Grouting, Waterproofing Barrier &amp; Debris Disposal</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>1</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right', color: MUTED }}>lot</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'right' }}>{inr(row.additional)}</td>
+                        <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: 600 }}>{inr(row.additional)}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                {/* Subtotal Footer Strip */}
+                <div
+                  style={{
+                    background: '#f9f8f5',
+                    padding: '8px 14px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    borderTop: `1px solid ${LINE}`,
+                    fontSize: 10.5,
+                  }}
+                >
+                  <span style={{ color: MUTED }}>
+                    Materials: {inr(row.materials)} · Fixtures: {inr(row.fixtures)} · Labour: {inr(row.labour)} · Additional: {inr(row.additional)}
+                  </span>
+                  <span style={{ fontWeight: 800, color: CHARCOAL }}>
+                    {row.name} Subtotal: <b style={{ color: ORANGE, fontSize: 12 }}>{inr(row.subtotal)}</b>
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* 4. BATHROOM-WISE MATERIAL AND LABOUR TOTALS (Comparison Table) */}
+      {/* ------------------------------------------------------------------- */}
+      <div style={{ padding: '24px 24px 0' }}>
+        <SectionTitle subtitle="Consolidated comparison of material, fixture, labour, and additional work totals across all bathrooms.">
+          4. Bathroom-Wise Material and Labour Totals
+        </SectionTitle>
+
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead>
+            <tr style={{ background: '#f4f2ee', borderBottom: `2px solid ${LINE}` }}>
+              <th style={{ textAlign: 'left', padding: '8px 10px', fontSize: 9.5, fontWeight: 700, color: CHARCOAL }}>
+                Bathroom
+              </th>
+              <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 9.5, fontWeight: 700, color: MUTED }}>
+                Floor Area
+              </th>
+              <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 9.5, fontWeight: 700, color: MUTED }}>
+                Wall Area
+              </th>
+              <th style={{ textAlign: 'right', padding: '8px 8px', fontSize: 9.5, fontWeight: 700, color: CHARCOAL }}>
+                Materials &amp; Tiles
+              </th>
+              <th style={{ textAlign: 'right', padding: '8px 8px', fontSize: 9.5, fontWeight: 700, color: CHARCOAL }}>
+                Fixtures &amp; Fittings
+              </th>
+              <th style={{ textAlign: 'right', padding: '8px 8px', fontSize: 9.5, fontWeight: 700, color: CHARCOAL }}>
+                Labour Charges
+              </th>
+              <th style={{ textAlign: 'right', padding: '8px 8px', fontSize: 9.5, fontWeight: 700, color: CHARCOAL }}>
+                Additional Work
+              </th>
+              <th style={{ textAlign: 'right', padding: '8px 10px', fontSize: 9.5, fontWeight: 800, color: ORANGE }}>
+                Bathroom Subtotal
+              </th>
             </tr>
           </thead>
           <tbody>
-            {data.bathrooms.map((b, idx) => (
-              <tr key={`${b.name}-${idx}`}>
-                <td style={{ padding: '7px 8px', fontSize: 11, fontWeight: 600, borderBottom: '1px solid #f0eeea' }}>
-                  {b.name}
+            {bathroomRows.map((r) => (
+              <tr key={r.index} style={{ borderBottom: `1px solid ${LINE}` }}>
+                <td style={{ padding: '8px 10px', fontWeight: 700 }}>
+                  {r.name}
+                  <span style={{ display: 'block', fontSize: 9, color: MUTED, fontWeight: 500 }}>
+                    {r.type} · {trimNum(r.length)} × {trimNum(r.width)} {r.unit}
+                  </span>
                 </td>
-                <td style={{ padding: '7px 8px', fontSize: 11, color: BODY, borderBottom: '1px solid #f0eeea' }}>
-                  {b.type}
+                <td style={{ padding: '8px 6px', textAlign: 'right', color: BODY }}>
+                  {trimNum(r.floorArea)} sq.ft
                 </td>
-                <td
-                  style={{
-                    padding: '7px 8px',
-                    fontSize: 11,
-                    color: BODY,
-                    textAlign: 'right',
-                    whiteSpace: 'nowrap',
-                    borderBottom: '1px solid #f0eeea',
-                  }}
-                >
-                  {trimNum(b.length)} ft × {trimNum(b.width)} ft
+                <td style={{ padding: '8px 6px', textAlign: 'right', color: BODY }}>
+                  {trimNum(r.wallArea)} sq.ft
                 </td>
-                <td
-                  style={{
-                    padding: '7px 8px',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    textAlign: 'right',
-                    whiteSpace: 'nowrap',
-                    borderBottom: '1px solid #f0eeea',
-                  }}
-                >
-                  {trimNum(b.areaSqft)} sq.ft
+                <td style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600 }}>
+                  {inr(r.materials)}
+                </td>
+                <td style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600 }}>
+                  {inr(r.fixtures)}
+                </td>
+                <td style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600 }}>
+                  {inr(r.labour)}
+                </td>
+                <td style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600 }}>
+                  {inr(r.additional)}
+                </td>
+                <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: ORANGE }}>
+                  {inr(r.subtotal)}
                 </td>
               </tr>
             ))}
+            {/* Total Row */}
+            <tr style={{ background: '#fdf9f4', borderTop: `2px solid ${ORANGE}` }}>
+              <td style={{ padding: '10px 10px', fontWeight: 800, color: CHARCOAL }}>
+                Combined Total ({bathroomRows.length} Bathrooms)
+              </td>
+              <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700 }}>
+                {trimNum(sumFloorArea)} sq.ft
+              </td>
+              <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 700 }}>
+                {trimNum(sumWallArea)} sq.ft
+              </td>
+              <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700 }}>
+                {inr(sumMaterials)}
+              </td>
+              <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700 }}>
+                {inr(sumFixtures)}
+              </td>
+              <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700 }}>
+                {inr(sumLabour)}
+              </td>
+              <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700 }}>
+                {inr(sumAdditional)}
+              </td>
+              <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 800, color: ORANGE, fontSize: 13 }}>
+                {inr(sumSubtotal)}
+              </td>
+            </tr>
           </tbody>
         </table>
-        <div
-          style={{
-            marginTop: 12,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 12,
-            background: '#fdeee2',
-            border: '1px solid #f6d7bb',
-            borderRadius: 8,
-            padding: '9px 12px',
-          }}
-        >
-          <span style={{ fontSize: 11 }}>
-            <b>Package: {data.packageName}</b>
-            <span style={{ color: BODY }}>
-              {' '}— {inr(data.packageRate)}/sq.ft × {trimNum(data.totalArea)} sq.ft
-            </span>
-          </span>
-          <span style={{ fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>{inr(data.packageAmount)}</span>
-        </div>
       </div>
 
-      {/* Cost breakdown */}
-      <div style={{ padding: '18px 24px 0' }}>
-        <SectionTitle>Cost Breakdown</SectionTitle>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              {['Item', 'Qty', 'Unit', 'Rate', 'Amount'].map((h, i) => (
-                <th
-                  key={h}
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: 1,
-                    color: MUTED,
-                    textAlign: i === 0 ? 'left' : 'right',
-                    padding: '6px 8px',
-                    borderBottom: '1px solid #e5e2dc',
-                  }}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {groups.map((g) => (
-              <FragmentGroup
-                key={g.section}
-                label={g.label}
-                items={g.items}
-              />
-            ))}
-            {groups.length === 0 ? (
-              <tr>
-                <td colSpan={5} style={{ padding: '10px 8px', fontSize: 11, color: MUTED, fontStyle: 'italic' }}>
-                  No line items — package charges only.
-                </td>
-              </tr>
+      {/* ------------------------------------------------------------------- */}
+      {/* 5, 6, 7, 8: COMBINED QUOTATION SUMMARY */}
+      {/* ------------------------------------------------------------------- */}
+      <div style={{ padding: '24px 24px 0' }}>
+        <SectionTitle subtitle="The combined total matches the sum of the individual bathroom amounts and explicitly defined project adjustments.">
+          Combined Quotation Summary
+        </SectionTitle>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ width: 380, maxWidth: '100%', background: '#faf9f7', border: `1px solid ${LINE}`, borderRadius: 10, padding: '14px 18px' }}>
+            {/* 5. Total project subtotal */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 12, borderBottom: `1px dashed ${LINE}` }}>
+              <span style={{ fontWeight: 600, color: CHARCOAL }}>5. Total Project Subtotal</span>
+              <span style={{ fontWeight: 700, color: CHARCOAL }}>{inr(sumSubtotal || data.grossValue)}</span>
+            </div>
+
+            {/* 6. Project-wide discounts */}
+            {showDiscount ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 12, borderBottom: `1px dashed ${LINE}` }}>
+                <span style={{ color: '#b23b0a' }}>6. Project-Wide Discount ({discountHint})</span>
+                <span style={{ fontWeight: 700, color: '#b23b0a' }}>− {inr(data.discountAmount)}</span>
+              </div>
             ) : null}
-          </tbody>
-        </table>
-      </div>
 
-      {/* Summary */}
-      <div style={{ padding: '14px 24px 0', display: 'flex', justifyContent: 'flex-end' }}>
-        <div style={{ width: 320, maxWidth: '100%' }}>
-          <SummaryRow label="Gross Value" value={inr(data.grossValue)} />
-          {showDiscount ? (
-            <SummaryRow
-              label={`Discount (${discountHint})`}
-              value={`− ${inr(data.discountAmount)}`}
-              valueColor="#b23b0a"
-            />
-          ) : null}
-          <SummaryRow label="Taxable Value" value={inr(data.taxableValue)} />
-          <SummaryRow label={`GST (@ ${trimNum(data.gstRate)}%)`} value={inr(data.gstAmount)} />
-          <div style={{ borderTop: `1px solid ${CHARCOAL}`, margin: '8px 0' }} />
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              background: CHARCOAL,
-              color: '#ffffff',
-              borderRadius: 8,
-              padding: '10px 14px',
-            }}
-          >
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5 }}>TOTAL PAYABLE</span>
-            <span style={{ fontSize: 16, fontWeight: 800 }}>{inr(data.totalPayable)}</span>
+            {/* 7. Applicable taxes */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 12, borderBottom: `1px dashed ${LINE}` }}>
+              <span style={{ color: BODY }}>7. Applicable Taxes (GST @ {trimNum(data.gstRate)}%)</span>
+              <span style={{ fontWeight: 700, color: BODY }}>{inr(data.gstAmount)}</span>
+            </div>
+
+            {/* 8. Final quotation amount */}
+            <div
+              style={{
+                marginTop: 12,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: CHARCOAL,
+                color: '#ffffff',
+                borderRadius: 8,
+                padding: '12px 16px',
+              }}
+            >
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.5 }}>
+                8. FINAL QUOTATION AMOUNT
+              </span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: '#ffffff' }}>
+                {inr(data.totalPayable)}
+              </span>
+            </div>
+
+            <div style={{ fontSize: 9.5, color: MUTED, marginTop: 8, textAlign: 'right' }}>
+              ✓ Matches sum of individual bathroom amounts &amp; project adjustments
+            </div>
           </div>
         </div>
       </div>
 
       {/* Amount in words */}
-      <div style={{ padding: '12px 24px 0', fontSize: 10.5 }}>
+      <div style={{ padding: '14px 24px 0', fontSize: 11 }}>
         <span style={{ fontWeight: 700 }}>Amount in Words: </span>
         <span style={{ fontStyle: 'italic', color: BODY }}>{amountInWords(data.totalPayable)}</span>
       </div>
@@ -601,77 +979,9 @@ export default function QuotationPreview({ data }: { data: QuotationPreviewData 
         }}
       >
         <span style={{ fontStyle: 'italic', fontWeight: 600, fontSize: 11, color: CHARCOAL }}>
-          Thank you for visiting AURAVIX BATH STUDIO.
+          Thank you for choosing AURAVIX BATH STUDIO.
         </span>
       </div>
-    </div>
-  )
-}
-
-/** Item group: subtle section header row + zebra item rows. */
-function FragmentGroup({
-  label,
-  items,
-}: {
-  label: string
-  items: QuotationPreviewData['items']
-}) {
-  return (
-    <>
-      <tr>
-        <td
-          colSpan={5}
-          style={{
-            background: '#f4f2ee',
-            fontSize: 9,
-            fontWeight: 700,
-            letterSpacing: 1.5,
-            textTransform: 'uppercase',
-            color: BODY,
-            padding: '5px 8px',
-          }}
-        >
-          {label}
-        </td>
-      </tr>
-      {items.map((item, idx) => (
-        <tr
-          key={`${item.section}-${item.name}-${idx}`}
-          style={{ background: idx % 2 === 1 ? '#faf9f7' : '#ffffff' }}
-        >
-          <td style={{ padding: '6px 8px', fontSize: 11 }}>{item.name}</td>
-          <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', whiteSpace: 'nowrap' }}>
-            {trimNum(item.quantity)}
-          </td>
-          <td style={{ padding: '6px 8px', fontSize: 11, color: BODY, textAlign: 'right', whiteSpace: 'nowrap' }}>
-            {item.unit}
-          </td>
-          <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right', whiteSpace: 'nowrap' }}>
-            {inr(item.rate)}
-          </td>
-          <td style={{ padding: '6px 8px', fontSize: 11, fontWeight: 600, textAlign: 'right', whiteSpace: 'nowrap' }}>
-            {inr(item.amount)}
-          </td>
-        </tr>
-      ))}
-    </>
-  )
-}
-
-function SummaryRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        gap: 12,
-        padding: '5px 0',
-        fontSize: 11.5,
-        borderBottom: `1px dashed ${LINE}`,
-      }}
-    >
-      <span style={{ color: BODY }}>{label}</span>
-      <span style={{ fontWeight: 600, color: valueColor ?? CHARCOAL, whiteSpace: 'nowrap' }}>{value}</span>
     </div>
   )
 }

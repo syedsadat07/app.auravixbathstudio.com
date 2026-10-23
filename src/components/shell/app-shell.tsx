@@ -5,7 +5,6 @@ import { toast } from 'sonner'
 import {
   BarChart3,
   BookUser,
-  Calendar,
   Eye,
   EyeOff,
   FileText,
@@ -71,8 +70,6 @@ const MAIN_NAV: NavItem[] = [
   { view: 'leads', label: 'My Leads', icon: Users },
   { view: 'quotations', label: 'Quotations', icon: FileText },
   { view: 'orders', label: 'Orders', icon: ShoppingBag },
-  { view: 'appointments', label: 'Appointments', icon: Calendar },
-  { view: 'customers', label: 'Customers', icon: BookUser },
   { view: 'packages', label: 'Packages', icon: Package },
   { view: 'reports', label: 'Reports', icon: BarChart3 },
 ]

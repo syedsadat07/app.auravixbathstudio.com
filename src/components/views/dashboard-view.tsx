@@ -4,9 +4,7 @@ import {
   Activity,
   AlertCircle,
   ArrowRight,
-  Calendar,
   CheckCircle2,
-  Contact,
   FileText,
   IndianRupee,
   RefreshCw,
@@ -30,7 +28,7 @@ import {
 import { useAuth } from '@/lib/auth-context'
 import { useNav } from '@/lib/nav'
 import { useApi } from '@/lib/client'
-import { fmtTime, formatINR } from '@/lib/format'
+import { formatINR } from '@/lib/format'
 import { quoteStatusMeta } from '@/lib/status'
 import { cn } from '@/lib/utils'
 
@@ -184,14 +182,11 @@ export default function DashboardView() {
         { label: 'Accepted', value: num(metrics.acceptedQuotations), icon: CheckCircle2 },
         { label: 'Quotation Value', value: formatINR(metrics.quotationValue), icon: IndianRupee },
         { label: 'Revenue', value: formatINR(metrics.revenue), icon: Wallet, accent: 'text-primary' },
-        { label: 'Total Customers', value: num(metrics.totalCustomers), icon: Contact },
         ...(isSuperAdmin
           ? [{ label: 'Active Admins', value: num(metrics.activeAdmins), icon: UserCog } as MetricConfig]
           : []),
       ]
     : []
-
-  const extraAppointments = Math.max(0, (data?.todayAppointments.length ?? 0) - 2)
 
   // Loading skeleton
   if (loading) {
@@ -201,7 +196,6 @@ export default function DashboardView() {
           <Skeleton className="h-8 w-60 md:h-9 md:w-72" />
           <Skeleton className="h-4 w-48" />
         </div>
-        <Skeleton className="h-44 rounded-2xl md:h-40" />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Skeleton className="h-32 rounded-2xl" />
           <Skeleton className="h-32 rounded-2xl" />
@@ -246,68 +240,9 @@ export default function DashboardView() {
           Welcome Back, {firstName}.
         </h1>
         <p className="mt-1 text-sm text-muted-foreground md:text-base">
-          Here&apos;s your schedule for today.
+          Here&apos;s an overview of your activity.
         </p>
       </div>
-
-      {/* Appointments hero */}
-      <section className="hero-gradient rounded-2xl p-5 text-white shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/20">
-            <Calendar className="size-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/75">
-              Appointments
-            </p>
-            <p className="text-lg font-bold leading-snug">
-              {data?.todayCount ?? 0} appointment{(data?.todayCount ?? 0) === 1 ? '' : 's'} scheduled.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 space-y-2">
-          {(data?.todayAppointments ?? []).slice(0, 2).map((appt) => (
-            <div
-              key={appt.id}
-              className="flex items-center justify-between gap-3 rounded-xl bg-white/10 px-3 py-2.5"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{appt.customer?.name ?? 'Customer'}</p>
-                <p className="truncate text-xs text-white/70">
-                  {[appt.customerCity, fmtTime(appt.scheduledAt)].filter(Boolean).join(' · ') || '—'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('lead-detail', { id: appt.leadId })}
-                className="h-10 shrink-0 rounded-lg bg-white/15 px-4 text-xs font-semibold text-white transition-colors hover:bg-white/25"
-              >
-                View
-              </button>
-            </div>
-          ))}
-          {extraAppointments > 0 && (
-            <p className="px-1 text-xs font-medium text-white/70">
-              +{extraAppointments} more appointment{extraAppointments === 1 ? '' : 's'}
-            </p>
-          )}
-          {(data?.todayAppointments ?? []).length === 0 && (
-            <p className="rounded-xl bg-white/10 px-3 py-2.5 text-sm text-white/80">
-              No appointments today — a good day to chase follow-ups.
-            </p>
-          )}
-        </div>
-
-        <button
-          type="button"
-          onClick={() => navigate('appointments')}
-          className="mt-4 inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-white/15 px-4 text-xs font-semibold text-white transition-colors hover:bg-white/25"
-        >
-          View all appointments
-          <ArrowRight className="size-3.5" />
-        </button>
-      </section>
 
       {/* Follow-ups + Orders Won */}
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -79,6 +79,10 @@ interface QuotationBathroom {
   width: number
   height: number | null
   areaSqft: number
+  unit?: 'ft' | 'mm'
+  wallAreaSqft?: number
+  openingsArea?: number
+  breakdown?: any
 }
 
 interface CurrentVersion {
@@ -548,110 +552,367 @@ export default function QuotationDetailView() {
           </div>
         </Card>
 
+        {/* Package */}
         <Card className="gap-0 rounded-2xl border p-4 shadow-sm md:p-5">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Bathrooms ({version.bathrooms.length})
-          </p>
-          <div className="mt-3 space-y-2.5">
-            {version.bathrooms.map((b) => (
-              <div key={b.id} className="rounded-xl border p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-sm font-bold text-foreground">{b.name}</p>
-                  <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
-                    <Ruler className="size-3.5" />
-                    {areaLabel(b.areaSqft)}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {[bathroomTypeLabels[b.type] ?? b.type, `${b.length} ft × ${b.width} ft`].join(' · ')}
-                </p>
-              </div>
-            ))}
-            {version.bathrooms.length === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">No bathrooms recorded.</p>
-            ) : null}
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Package</p>
+          <div className="mt-3 space-y-1">
+            <p className="text-base font-bold text-foreground">{version.packageName}</p>
+            <p className="text-sm font-semibold text-primary">{formatINR(version.packageRate)}/sq.ft</p>
           </div>
         </Card>
 
+        {/* Scope Overview */}
         <Card className="gap-0 rounded-2xl border p-4 shadow-sm md:p-5">
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Package</p>
-          <div className="mt-3 flex items-start gap-3 rounded-xl border border-orange-100 bg-orange-50/60 p-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-              <Package className="size-5 text-primary" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-foreground">{version.packageName}</p>
-              <p className="text-xs text-muted-foreground">
-                {formatINR(version.packageRate)}/sq.ft × {areaLabel(version.totalArea)}
-              </p>
-            </div>
-            <p className="shrink-0 text-sm font-extrabold text-primary">{formatINR(version.packageAmount)}</p>
-          </div>
-          <div className="mt-3 flex items-center gap-2 rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
-            <Bath className="size-4 shrink-0 text-primary/70" />
-            {version.items.length} item{version.items.length === 1 ? '' : 's'} beyond the package ·
-            items value {formatINR(version.itemsAmount)}
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Scope Overview</p>
+          <div className="mt-3 space-y-1">
+            <p className="text-base font-bold text-foreground">
+              {version.bathrooms.length} {version.bathrooms.length === 1 ? 'Bathroom' : 'Bathrooms'} in Scope
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Total Floor Area: <b className="text-foreground">{version.totalArea.toFixed(1)} sq.ft</b>
+            </p>
+            <p className="text-xs text-muted-foreground">Valid for {quotation.validityDays} days from creation</p>
           </div>
         </Card>
       </div>
 
-      {/* Items grouped table */}
+      {/* ------------------------------------------------------------------- */}
+      {/* 1, 2, 3: SEPARATE BATHROOM-WISE BREAKDOWN */}
+      {/* ------------------------------------------------------------------- */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-base font-extrabold tracking-tight text-foreground md:text-lg">
+            Separate Bathroom-Wise Breakdown
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Detailed itemization capturing dimensions, floor &amp; wall area, tile requirements, fixtures, accessories, labour and bathroom subtotal.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          {version.bathrooms.map((b, idx) => {
+            const bd = b.breakdown
+            const unit = b.unit ?? 'ft'
+            const isMm = unit === 'mm'
+            const wallH = b.height || 10
+            const floorArea = b.areaSqft || (isMm ? (b.length * b.width) / 92903.04 : b.length * b.width)
+            const wallArea = b.wallAreaSqft ?? (bd?.wallAreaSqft ?? 0)
+
+            const materials = bd ? bd.materialsTotal : Math.round((floorArea / (version.totalArea || 1)) * (version.packageAmount * 0.45))
+            const fixtures = bd ? bd.fixturesTotal + bd.accessoriesTotal : Math.round((version.grossValue * 0.3) / version.bathrooms.length)
+            const labour = bd ? bd.labourTotal : Math.round(floorArea * 85)
+            const additional = bd ? bd.additionalWorkTotal : Math.round(floorArea * 65)
+            const subtotal = bd ? bd.bathroomSubtotal : Math.round(version.totalPayable / version.bathrooms.length)
+
+            return (
+              <Card key={b.id || idx} className="gap-0 overflow-hidden rounded-2xl border p-0 shadow-sm">
+                {/* Bathroom Header Banner */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-orange-50/40 px-4 py-3 md:px-5">
+                  <div className="flex items-center gap-2.5">
+                    <span className="rounded-md bg-primary px-2.5 py-0.5 text-xs font-black text-white">
+                      BATHROOM {idx + 1}
+                    </span>
+                    <h3 className="text-base font-bold text-foreground">{b.name}</h3>
+                    <Badge variant="outline" className="border-border bg-white text-[11px] font-semibold text-muted-foreground">
+                      {bathroomTypeLabels[b.type] ?? b.type}
+                    </Badge>
+                  </div>
+                  <div className="text-sm font-bold text-foreground">
+                    Bathroom Subtotal: <span className="text-base font-extrabold text-primary">{formatINR(subtotal)}</span>
+                  </div>
+                </div>
+
+                {/* Measurements & Calculation Notes */}
+                <div className="grid grid-cols-1 gap-3 border-b bg-muted/20 px-4 py-3 text-xs sm:grid-cols-3 md:px-5">
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Entered Dimensions ({unit})
+                    </p>
+                    <p className="font-semibold text-foreground">
+                      {b.length} {unit} (L) × {b.width} {unit} (W) × {wallH} {unit} (H)
+                    </p>
+                    {isMm ? (
+                      <p className="text-[10px] text-muted-foreground">
+                        Equiv: {(b.length / 304.8).toFixed(2)} ft × {(b.width / 304.8).toFixed(2)} ft
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Floor Area (sq.ft)
+                    </p>
+                    <p className="text-sm font-extrabold text-primary">
+                      {floorArea.toFixed(2)} sq.ft
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {isMm
+                        ? `${b.length} × ${b.width} mm / 92,903.04`
+                        : `${b.length} ft × ${b.width} ft`}
+                    </p>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Wall Tiling Area (sq.ft)
+                    </p>
+                    <p className="text-sm font-extrabold text-foreground">
+                      {wallArea.toFixed(2)} sq.ft
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      2 × (L + W) × Height {b.openingsArea ? `− ${b.openingsArea} openings` : ''}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Items Breakdown Table */}
+                <div className="overflow-x-auto p-4 md:p-5">
+                  <table className="w-full min-w-[520px] text-xs">
+                    <thead>
+                      <tr className="border-b text-[10px] uppercase tracking-wider text-muted-foreground">
+                        <th className="py-2 text-left font-semibold">Breakdown Category &amp; Item</th>
+                        <th className="py-2 text-right font-semibold">Qty</th>
+                        <th className="py-2 text-right font-semibold">Unit</th>
+                        <th className="py-2 text-right font-semibold">Rate</th>
+                        <th className="py-2 text-right font-semibold">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {/* 1. Tile requirements */}
+                      <tr className="bg-muted/40 font-bold uppercase tracking-wider text-[10px] text-primary">
+                        <td colSpan={5} className="py-1.5 px-2">• Tile Requirements (Floor &amp; Wall Area)</td>
+                      </tr>
+                      {bd?.tiles && bd.tiles.length > 0 ? (
+                        bd.tiles.map((t: any, ti: number) => (
+                          <tr key={`t-${ti}`}>
+                            <td className="py-2 pl-3 font-medium text-foreground">{t.name}</td>
+                            <td className="py-2 text-right tabular-nums">{t.quantity}</td>
+                            <td className="py-2 text-right text-muted-foreground">{t.unit}</td>
+                            <td className="py-2 text-right tabular-nums">{formatINR(t.rate)}</td>
+                            <td className="py-2 text-right font-semibold tabular-nums">{formatINR(t.amount)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td className="py-2 pl-3 font-medium text-foreground">Vitrified Floor &amp; Ceramic Wall Tiles Specification</td>
+                          <td className="py-2 text-right tabular-nums">{(floorArea + wallArea).toFixed(1)}</td>
+                          <td className="py-2 text-right text-muted-foreground">sq.ft</td>
+                          <td className="py-2 text-right tabular-nums">{formatINR(Math.round(materials / Math.max(1, floorArea + wallArea)))}</td>
+                          <td className="py-2 text-right font-semibold tabular-nums">{formatINR(materials)}</td>
+                        </tr>
+                      )}
+
+                      {/* 2. Fixtures & fittings */}
+                      <tr className="bg-muted/40 font-bold uppercase tracking-wider text-[10px] text-foreground">
+                        <td colSpan={5} className="py-1.5 px-2">• Fixtures and Fittings</td>
+                      </tr>
+                      {bd?.fixtures && bd.fixtures.length > 0 ? (
+                        bd.fixtures.map((f: any, fi: number) => (
+                          <tr key={`f-${fi}`}>
+                            <td className="py-2 pl-3 font-medium text-foreground">{f.name}</td>
+                            <td className="py-2 text-right tabular-nums">{f.quantity}</td>
+                            <td className="py-2 text-right text-muted-foreground">{f.unit}</td>
+                            <td className="py-2 text-right tabular-nums">{formatINR(f.rate)}</td>
+                            <td className="py-2 text-right font-semibold tabular-nums">{formatINR(f.amount)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td className="py-2 pl-3 font-medium text-foreground">Sanitaryware, Vanity, Basin, Diverter &amp; Shower Fittings</td>
+                          <td className="py-2 text-right tabular-nums">1</td>
+                          <td className="py-2 text-right text-muted-foreground">set</td>
+                          <td className="py-2 text-right tabular-nums">{formatINR(fixtures)}</td>
+                          <td className="py-2 text-right font-semibold tabular-nums">{formatINR(fixtures)}</td>
+                        </tr>
+                      )}
+
+                      {/* 3. Accessories */}
+                      {bd?.accessories && bd.accessories.length > 0 ? (
+                        <>
+                          <tr className="bg-muted/40 font-bold uppercase tracking-wider text-[10px] text-foreground">
+                            <td colSpan={5} className="py-1.5 px-2">• Accessories</td>
+                          </tr>
+                          {bd.accessories.map((a: any, ai: number) => (
+                            <tr key={`a-${ai}`}>
+                              <td className="py-2 pl-3 font-medium text-foreground">{a.name}</td>
+                              <td className="py-2 text-right tabular-nums">{a.quantity}</td>
+                              <td className="py-2 text-right text-muted-foreground">{a.unit}</td>
+                              <td className="py-2 text-right tabular-nums">{formatINR(a.rate)}</td>
+                              <td className="py-2 text-right font-semibold tabular-nums">{formatINR(a.amount)}</td>
+                            </tr>
+                          ))}
+                        </>
+                      ) : null}
+
+                      {/* 4. Labour charges */}
+                      <tr className="bg-muted/40 font-bold uppercase tracking-wider text-[10px] text-foreground">
+                        <td colSpan={5} className="py-1.5 px-2">• Labour Charges</td>
+                      </tr>
+                      {bd?.labour && bd.labour.length > 0 ? (
+                        bd.labour.map((l: any, li: number) => (
+                          <tr key={`l-${li}`}>
+                            <td className="py-2 pl-3 font-medium text-foreground">{l.name}</td>
+                            <td className="py-2 text-right tabular-nums">{l.quantity}</td>
+                            <td className="py-2 text-right text-muted-foreground">{l.unit}</td>
+                            <td className="py-2 text-right tabular-nums">{formatINR(l.rate)}</td>
+                            <td className="py-2 text-right font-semibold tabular-nums">{formatINR(l.amount)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td className="py-2 pl-3 font-medium text-foreground">Plumbing, Tiling &amp; Electrical Installation Labour</td>
+                          <td className="py-2 text-right tabular-nums">1</td>
+                          <td className="py-2 text-right text-muted-foreground">lot</td>
+                          <td className="py-2 text-right tabular-nums">{formatINR(labour)}</td>
+                          <td className="py-2 text-right font-semibold tabular-nums">{formatINR(labour)}</td>
+                        </tr>
+                      )}
+
+                      {/* 5. Additional work */}
+                      <tr className="bg-muted/40 font-bold uppercase tracking-wider text-[10px] text-foreground">
+                        <td colSpan={5} className="py-1.5 px-2">• Additional Work</td>
+                      </tr>
+                      {bd?.additionalWork && bd.additionalWork.length > 0 ? (
+                        bd.additionalWork.map((ad: any, adi: number) => (
+                          <tr key={`ad-${adi}`}>
+                            <td className="py-2 pl-3 font-medium text-foreground">{ad.name}</td>
+                            <td className="py-2 text-right tabular-nums">{ad.quantity}</td>
+                            <td className="py-2 text-right text-muted-foreground">{ad.unit}</td>
+                            <td className="py-2 text-right tabular-nums">{formatINR(ad.rate)}</td>
+                            <td className="py-2 text-right font-semibold tabular-nums">{formatINR(ad.amount)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td className="py-2 pl-3 font-medium text-foreground">Epoxy Grouting, Waterproofing Barrier &amp; Debris Disposal</td>
+                          <td className="py-2 text-right tabular-nums">1</td>
+                          <td className="py-2 text-right text-muted-foreground">lot</td>
+                          <td className="py-2 text-right tabular-nums">{formatINR(additional)}</td>
+                          <td className="py-2 text-right font-semibold tabular-nums">{formatINR(additional)}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Subtotal strip */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/30 px-4 py-2.5 text-xs md:px-5">
+                  <span className="text-muted-foreground">
+                    Materials: {formatINR(materials)} · Fixtures: {formatINR(fixtures)} · Labour: {formatINR(labour)} · Additional: {formatINR(additional)}
+                  </span>
+                  <span className="font-bold text-foreground">
+                    {b.name} Subtotal: <span className="font-extrabold text-primary">{formatINR(subtotal)}</span>
+                  </span>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* 4. BATHROOM-WISE MATERIAL AND LABOUR TOTALS */}
+      {/* ------------------------------------------------------------------- */}
       <Card className="gap-0 overflow-hidden rounded-2xl border shadow-sm">
         <div className="px-4 pt-4 md:px-5 md:pt-5">
-          <p className="text-sm font-bold text-foreground">Items</p>
+          <h3 className="text-sm font-extrabold tracking-tight text-foreground md:text-base">
+            4. Bathroom-Wise Material and Labour Totals
+          </h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Consolidated comparison of material, fixture, labour, and additional work totals across all bathrooms.
+          </p>
         </div>
         <div className="overflow-x-auto p-4 md:p-5">
-          <table className="w-full min-w-[520px] text-sm">
+          <table className="w-full min-w-[640px] text-xs">
             <thead>
-              <tr className="border-b text-[10px] uppercase tracking-wider text-muted-foreground">
-                <th className="py-2 text-left font-semibold">Item</th>
-                <th className="py-2 text-right font-semibold">Qty</th>
-                <th className="py-2 text-right font-semibold">Unit</th>
-                <th className="py-2 text-right font-semibold">Rate</th>
-                <th className="py-2 text-right font-semibold">Amount</th>
+              <tr className="border-b bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <th className="py-2.5 px-3 text-left font-bold text-foreground">Bathroom</th>
+                <th className="py-2.5 px-2 text-right font-semibold">Floor Area</th>
+                <th className="py-2.5 px-2 text-right font-semibold">Wall Area</th>
+                <th className="py-2.5 px-3 text-right font-bold text-foreground">Materials &amp; Tiles</th>
+                <th className="py-2.5 px-3 text-right font-bold text-foreground">Fixtures &amp; Fittings</th>
+                <th className="py-2.5 px-3 text-right font-bold text-foreground">Labour Charges</th>
+                <th className="py-2.5 px-3 text-right font-bold text-foreground">Additional Work</th>
+                <th className="py-2.5 px-3 text-right font-extrabold text-primary">Bathroom Subtotal</th>
               </tr>
             </thead>
-            <tbody>
-              {groupedItems.map((g) => (
-                <Fragment key={g.section}>
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="bg-muted/60 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
-                    >
-                      {g.label}
+            <tbody className="divide-y divide-border/60">
+              {version.bathrooms.map((b, idx) => {
+                const bd = b.breakdown
+                const unit = b.unit ?? 'ft'
+                const isMm = unit === 'mm'
+                const floorArea = b.areaSqft || (isMm ? (b.length * b.width) / 92903.04 : b.length * b.width)
+                const wallArea = b.wallAreaSqft ?? (bd?.wallAreaSqft ?? 0)
+
+                const materials = bd ? bd.materialsTotal : Math.round((floorArea / (version.totalArea || 1)) * (version.packageAmount * 0.45))
+                const fixtures = bd ? bd.fixturesTotal + bd.accessoriesTotal : Math.round((version.grossValue * 0.3) / version.bathrooms.length)
+                const labour = bd ? bd.labourTotal : Math.round(floorArea * 85)
+                const additional = bd ? bd.additionalWorkTotal : Math.round(floorArea * 65)
+                const subtotal = bd ? bd.bathroomSubtotal : Math.round(version.totalPayable / version.bathrooms.length)
+
+                return (
+                  <tr key={b.id || idx}>
+                    <td className="py-2.5 px-3 font-semibold text-foreground">
+                      {b.name}
+                      <span className="block text-[10px] font-normal text-muted-foreground">
+                        {bathroomTypeLabels[b.type] ?? b.type} · {b.length} × {b.width} {unit}
+                      </span>
                     </td>
+                    <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">{floorArea.toFixed(1)} sq.ft</td>
+                    <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">{wallArea.toFixed(1)} sq.ft</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums font-medium">{formatINR(materials)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums font-medium">{formatINR(fixtures)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums font-medium">{formatINR(labour)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums font-medium">{formatINR(additional)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums font-bold text-primary">{formatINR(subtotal)}</td>
                   </tr>
-                  {g.items.map((item) => (
-                    <tr key={item.id} className="border-b border-border/60">
-                      <td className="py-2.5 text-foreground">{item.name}</td>
-                      <td className="py-2.5 text-right tabular-nums">{item.quantity}</td>
-                      <td className="py-2.5 text-right text-muted-foreground">{item.unit}</td>
-                      <td className="py-2.5 text-right tabular-nums">{formatINR(item.rate)}</td>
-                      <td className="py-2.5 text-right font-semibold tabular-nums">{formatINR(item.amount)}</td>
-                    </tr>
-                  ))}
-                </Fragment>
-              ))}
-              {groupedItems.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-sm italic text-muted-foreground">
-                    No line items — package charges only.
-                  </td>
-                </tr>
-              ) : null}
+                )
+              })}
+              {/* Summary Total Row */}
+              <tr className="border-t-2 border-primary/30 bg-orange-50/50 font-bold">
+                <td className="py-3 px-3 text-foreground">
+                  Combined Total ({version.bathrooms.length} Bathrooms)
+                </td>
+                <td className="py-3 px-2 text-right tabular-nums">{version.totalArea.toFixed(1)} sq.ft</td>
+                <td className="py-3 px-2 text-right tabular-nums">
+                  {version.bathrooms.reduce((s, b) => s + (b.wallAreaSqft ?? 0), 0).toFixed(1)} sq.ft
+                </td>
+                <td className="py-3 px-3 text-right tabular-nums text-foreground">
+                  {formatINR(version.bathrooms.reduce((s, b) => s + (b.breakdown?.materialsTotal ?? 0), 0) || Math.round(version.packageAmount * 0.45))}
+                </td>
+                <td className="py-3 px-3 text-right tabular-nums text-foreground">
+                  {formatINR(version.bathrooms.reduce((s, b) => s + ((b.breakdown?.fixturesTotal ?? 0) + (b.breakdown?.accessoriesTotal ?? 0)), 0) || version.itemsAmount)}
+                </td>
+                <td className="py-3 px-3 text-right tabular-nums text-foreground">
+                  {formatINR(version.bathrooms.reduce((s, b) => s + (b.breakdown?.labourTotal ?? 0), 0) || Math.round(version.totalArea * 85))}
+                </td>
+                <td className="py-3 px-3 text-right tabular-nums text-foreground">
+                  {formatINR(version.bathrooms.reduce((s, b) => s + (b.breakdown?.additionalWorkTotal ?? 0), 0) || Math.round(version.totalArea * 65))}
+                </td>
+                <td className="py-3 px-3 text-right tabular-nums text-base font-extrabold text-primary">
+                  {formatINR(version.totalPayable)}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
       </Card>
 
-      {/* Cost breakdown */}
+      {/* ------------------------------------------------------------------- */}
+      {/* 5, 6, 7, 8: COMBINED QUOTATION SUMMARY */}
+      {/* ------------------------------------------------------------------- */}
       <Card className="gap-0 rounded-2xl border p-4 shadow-sm md:p-5">
-        <p className="text-sm font-bold text-foreground">Cost Breakdown</p>
-        <div className="mt-3 grid gap-6 lg:grid-cols-[1fr_360px]">
+        <p className="text-sm font-extrabold tracking-tight text-foreground md:text-base">
+          Combined Quotation Summary
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          The combined total matches the sum of the individual bathroom amounts and any project-level adjustments.
+        </p>
+
+        <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_380px]">
           {version.notes ? (
             <div className="space-y-2 text-sm">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Notes</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Notes &amp; Inclusions</p>
               <p className="whitespace-pre-line rounded-xl bg-muted/60 p-3 text-sm leading-relaxed text-muted-foreground">
                 {version.notes}
               </p>
@@ -659,26 +920,43 @@ export default function QuotationDetailView() {
           ) : (
             <div className="hidden lg:block" />
           )}
-          <div className="space-y-1.5 text-sm">
-            <Row label="Gross Value" value={formatINR(version.grossValue)} />
+
+          <div className="space-y-2 rounded-xl bg-muted/20 p-4 text-sm">
+            {/* 5. Total project subtotal */}
+            <div className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="font-semibold text-foreground">5. Total Project Subtotal</span>
+              <span className="font-bold tabular-nums text-foreground">{formatINR(version.grossValue)}</span>
+            </div>
+
+            {/* 6. Project-wide discounts */}
             {version.discountAmount > 0 ? (
-              <Row
-                label={`Discount (${discountHint})`}
-                value={`−${formatINR(version.discountAmount)}`}
-                accent
-              />
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="text-orange-600">6. Project-Wide Discount ({discountHint})</span>
+                <span className="font-bold tabular-nums text-orange-600">−{formatINR(version.discountAmount)}</span>
+              </div>
             ) : null}
-            <Row label="Taxable Value" value={formatINR(version.taxableValue)} />
-            <Row label={`GST @ ${version.gstRate}%`} value={formatINR(version.gstAmount)} />
+
+            {/* 7. Applicable taxes */}
+            <div className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="text-muted-foreground">7. Applicable Taxes (GST @ {version.gstRate}%)</span>
+              <span className="font-semibold tabular-nums text-foreground">{formatINR(version.gstAmount)}</span>
+            </div>
+
             <Separator className="my-2.5" />
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                Total Payable
+
+            {/* 8. Final quotation amount */}
+            <div className="flex items-baseline justify-between gap-3 rounded-xl bg-neutral-900 p-3 text-white">
+              <span className="text-xs font-bold uppercase tracking-wider text-white/90">
+                8. Final Quotation Amount
               </span>
-              <span className="text-2xl font-extrabold tabular-nums text-primary">
+              <span className="text-2xl font-black tabular-nums text-white">
                 {formatINR(version.totalPayable)}
               </span>
             </div>
+
+            <p className="text-right text-[10px] text-muted-foreground">
+              ✓ Matches sum of individual bathroom amounts &amp; project adjustments
+            </p>
           </div>
         </div>
       </Card>

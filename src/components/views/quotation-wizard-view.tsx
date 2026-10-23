@@ -35,7 +35,23 @@ import {
 import { apiPost, useApi, useDebounced } from '@/lib/client'
 import { useAuth } from '@/lib/auth-context'
 import { useNav } from '@/lib/nav'
-import { calcAreaMaterialQuantity, calcQuotation, computeBathroomArea, round2 } from '@/lib/calc'
+import {
+  calcAreaMaterialQuantity,
+  calcBathroomBreakdown,
+  calcCombinedQuotation,
+  calcQuotation,
+  computeBathroomArea,
+  computeFloorArea,
+  computeWallArea,
+  mmToFeet,
+  round2,
+  roundMoney,
+  type BathroomBreakdownResult,
+  type BathroomInput,
+  type BathroomItemInput,
+  type CombinedQuotationResult,
+  type MeasurementUnit,
+} from '@/lib/calc'
 import { areaLabel, fmtDate, formatINR } from '@/lib/format'
 import { bathroomTypeLabels, versionTypeLabels } from '@/lib/status'
 import QuotationPreview, { type QuotationPreviewData } from '@/components/quotation/quotation-preview'
@@ -74,6 +90,8 @@ interface BathroomDraft {
   length: string
   width: string
   height: string
+  unit: 'ft' | 'mm'
+  openingsArea: string
 }
 
 interface DraftState {
@@ -157,7 +175,9 @@ const emptyBathroom = (n: number): BathroomDraft => ({
   type: 'COMMON',
   length: '',
   width: '',
-  height: '',
+  height: '10',
+  unit: 'ft',
+  openingsArea: '',
 })
 
 const defaultDraft = (): DraftState => ({
@@ -233,7 +253,16 @@ export default function QuotationWizardView() {
         discountType: string
         discount: number
         notes: string | null
-        bathrooms: { name: string; type: string; length: number; width: number; height: number | null }[]
+        bathrooms: {
+          name: string
+          type: string
+          unit?: string | null
+          length: number
+          width: number
+          height: number | null
+          openingsArea?: number | null
+          wallAreaSqft?: number | null
+        }[]
         items: { section: string; materialId: string | null; name: string; quantity: number }[]
       }
       customer: {
@@ -412,9 +441,11 @@ export default function QuotationWizardView() {
         bathrooms: (v.bathrooms ?? []).map((b) => ({
           name: b.name,
           type: b.type,
+          unit: (b.unit === 'mm' ? 'mm' : 'ft') as 'ft' | 'mm',
           length: String(b.length),
           width: String(b.width),
-          height: b.height != null ? String(b.height) : '',
+          height: b.height != null ? String(b.height) : (b.unit === 'mm' ? '3048' : '10'),
+          openingsArea: b.openingsArea != null ? String(b.openingsArea) : '',
         })),
         packageId: v.packageId || null,
         tiles: (v.items ?? [])
@@ -489,9 +520,17 @@ export default function QuotationWizardView() {
   // ----- live quote (client-side preview only) -----
   const quote = useMemo(() => {
     const pkg = packages.find((p) => p.id === draft.packageId) ?? null
-    const bathroomsNum = draft.bathrooms.map((b) => ({ length: toNum(b.length), width: toNum(b.width) }))
+    const bathroomsNum = draft.bathrooms.map((b) => ({
+      name: b.name.trim() || 'Bathroom',
+      type: b.type || 'COMMON',
+      unit: (b.unit === 'mm' ? 'mm' : 'ft') as MeasurementUnit,
+      length: toNum(b.length),
+      width: toNum(b.width),
+      height: toNum(b.height) > 0 ? toNum(b.height) : (b.unit === 'mm' ? 3048 : 10),
+      openingsArea: toNum(b.openingsArea),
+    }))
     const totalArea = round2(
-      bathroomsNum.reduce((sum, b) => sum + computeBathroomArea(b.length, b.width), 0)
+      bathroomsNum.reduce((sum, b) => sum + computeFloorArea(b.length, b.width, b.unit), 0)
     )
 
     const items: QuoteItemRow[] = []
@@ -543,8 +582,121 @@ export default function QuotationWizardView() {
       })
     }
 
+    // Bathroom-level itemization and breakdown
+    const bathroomInputs: BathroomInput[] = bathroomsNum.map((b) => {
+      const bFloor = computeFloorArea(b.length, b.width, b.unit)
+      const bWall = computeWallArea(b.length, b.width, b.height, b.unit, b.openingsArea)
+      const totalTileArea = round2(bFloor + bWall)
+
+      const bTiles: BathroomItemInput[] = []
+      for (const id of draft.tiles) {
+        const m = materialsById.get(id)
+        if (!m) continue
+        const bQty = calcAreaMaterialQuantity(totalTileArea, m.coverage ?? 0, m.wastagePercent ?? 0)
+        bTiles.push({
+          name: m.name,
+          section: 'TILES',
+          materialId: m.id,
+          quantity: bQty,
+          unit: m.unit,
+          rate: m.price,
+          amount: round2(bQty * m.price),
+        })
+      }
+
+      const bFixtures: BathroomItemInput[] = []
+      for (const f of draft.fixtures) {
+        const m = materialsById.get(f.materialId)
+        if (!m || f.quantity < 1) continue
+        const share = Math.max(1, Math.round(f.quantity / Math.max(1, bathroomsNum.length)))
+        bFixtures.push({
+          name: m.name,
+          section: 'FIXTURES',
+          materialId: m.id,
+          quantity: share,
+          unit: m.unit,
+          rate: m.price,
+          amount: round2(share * m.price),
+        })
+      }
+
+      const bAccessories: BathroomItemInput[] = []
+      for (const a of draft.addons) {
+        const m = materialsById.get(a.materialId)
+        if (!m || a.quantity < 1) continue
+        const share = Math.max(1, Math.round(a.quantity / Math.max(1, bathroomsNum.length)))
+        bAccessories.push({
+          name: m.name,
+          section: 'ACCESSORIES',
+          materialId: m.id,
+          quantity: share,
+          unit: m.unit,
+          rate: m.price,
+          amount: round2(share * m.price),
+        })
+      }
+
+      const bLabour: BathroomItemInput[] = [
+        {
+          name: 'Tiling & Surface Prep Labour',
+          section: 'LABOUR',
+          quantity: totalTileArea,
+          unit: 'sq.ft',
+          rate: 45,
+          amount: round2(totalTileArea * 45),
+        },
+        {
+          name: 'Plumbing & Fixtures Installation',
+          section: 'LABOUR',
+          quantity: 1,
+          unit: 'lot',
+          rate: 12000,
+          amount: 12000,
+        },
+      ]
+
+      const bAdditional: BathroomItemInput[] = [
+        {
+          name: 'Epoxy Grouting & Waterproofing Barrier',
+          section: 'ADDITIONAL',
+          quantity: bFloor,
+          unit: 'sq.ft',
+          rate: 65,
+          amount: round2(bFloor * 65),
+        },
+      ]
+
+      return {
+        name: b.name,
+        type: b.type,
+        unit: b.unit,
+        length: b.length,
+        width: b.width,
+        height: b.height,
+        openingsArea: b.openingsArea,
+        floorAreaSqft: bFloor,
+        wallAreaSqft: bWall,
+        tiles: bTiles,
+        fixtures: bFixtures,
+        accessories: bAccessories,
+        labour: bLabour,
+        additionalWork: bAdditional,
+        discountType: draft.discountType,
+        discount: 0,
+        gstRate,
+      }
+    })
+
+    const combined = calcCombinedQuotation({
+      bathrooms: bathroomInputs,
+      packageRate: pkg?.pricePerSqft ?? 0,
+      projectDiscountType: draft.discountType,
+      projectDiscount: toNum(draft.discount),
+      gstRate,
+    })
+
     const calc = calcQuotation({
-      bathrooms: bathroomsNum,
+      bathrooms: bathroomsNum.map((b) => ({ length: b.length, width: b.width, unit: b.unit })),
       packageRate: pkg?.pricePerSqft ?? 0,
       items: items.map((i) => ({ quantity: i.quantity, rate: i.rate })),
       discountType: draft.discountType,
@@ -552,7 +704,7 @@ export default function QuotationWizardView() {
       gstRate,
     })
 
-    return { pkg, totalArea, items, calc }
+    return { pkg, totalArea, items, calc, combined }
   }, [draft, packages, materialsById, consultationFee, gstRate])
 
   // ----- preview data (Preview step) -----
@@ -575,17 +727,22 @@ export default function QuotationWizardView() {
         city: draft.city.trim() || undefined,
         pincode: draft.pincode.trim() || undefined,
       },
-      bathrooms: draft.bathrooms.map((b) => ({
+      bathrooms: quote.combined.bathrooms.map((b) => ({
         name: b.name.trim() || 'Bathroom',
         type: bathroomTypeLabels[b.type] ?? b.type,
-        length: toNum(b.length),
-        width: toNum(b.width),
-        areaSqft: computeBathroomArea(toNum(b.length), toNum(b.width)),
+        unit: b.unit,
+        length: b.length,
+        width: b.width,
+        height: b.height,
+        areaSqft: b.floorAreaSqft,
+        wallAreaSqft: b.wallAreaSqft,
+        openingsAreaSqft: b.openingsAreaSqft,
+        breakdown: b,
       })),
       packageName: quote.pkg?.name ?? '—',
       packageRate: quote.pkg?.pricePerSqft ?? 0,
       packageAmount: quote.calc.packageAmount,
-      totalArea: quote.calc.totalArea,
+      totalArea: quote.combined.totalFloorArea,
       items: quote.items.map((i) => ({
         section: i.section,
         name: i.name,
@@ -640,9 +797,11 @@ export default function QuotationWizardView() {
       bathrooms: draft.bathrooms.map((b) => ({
         name: b.name.trim(),
         type: b.type,
+        unit: b.unit,
         length: toNum(b.length),
         width: toNum(b.width),
         ...(toNum(b.height) > 0 ? { height: toNum(b.height) } : {}),
+        ...(toNum(b.openingsArea) > 0 ? { openingsArea: toNum(b.openingsArea) } : {}),
       })),
       packageId: draft.packageId as string,
       selections: {
@@ -821,7 +980,7 @@ export default function QuotationWizardView() {
                 Total Payable
               </span>
               <span className="block text-lg font-extrabold text-primary">
-                {formatINR(quote.calc.totalPayable)}
+                {formatINR(quote.combined?.finalQuotationAmount ?? quote.calc.totalPayable)}
               </span>
             </span>
             <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-3 py-1.5 text-xs font-bold text-primary">
@@ -1076,26 +1235,40 @@ function SummaryRows({
     totalArea: number
     items: QuoteItemRow[]
     calc: ReturnType<typeof calcQuotation>
+    combined?: CombinedQuotationResult
   }
   gstRate: number
   discountHint: string
 }) {
   const calc = quote.calc
-  const showDiscount = calc.discountAmount > 0
+  const combined = quote.combined
+  const floorArea = combined ? combined.totalFloorArea : calc.totalArea
+  const wallArea = combined ? combined.totalWallArea : 0
+  const grossValue = combined ? combined.totalBathroomGross : calc.grossValue
+  const discountAmount = combined ? combined.projectDiscountAmount : calc.discountAmount
+  const taxableValue = combined ? combined.projectTaxableValue : calc.taxableValue
+  const gstAmount = combined ? combined.projectGstAmount : calc.gstAmount
+  const totalPayable = combined ? combined.finalQuotationAmount : calc.totalPayable
+  const showDiscount = discountAmount > 0
+
   return (
     <div className="space-y-1.5">
-      <SummaryRow2 label="Area" value={areaLabel(calc.totalArea)} muted />
+      <SummaryRow2 label="Floor Area" value={areaLabel(floorArea)} muted />
+      {wallArea > 0 ? <SummaryRow2 label="Wall Area" value={areaLabel(wallArea)} muted /> : null}
+      {combined ? (
+        <SummaryRow2 label="Bathrooms in Scope" value={`${combined.bathrooms.length} Bathrooms`} muted />
+      ) : null}
       <SummaryRow2 label="Package" value={quote.pkg?.name ?? '—'} muted />
       <SummaryRow2 label="Items" value={String(quote.items.length)} muted />
       <Separator className="my-3" />
-      <SummaryRow2 label="Gross Value" value={formatINR(calc.grossValue)} />
-      {showDiscount ? <SummaryRow2 label={`Discount (${discountHint})`} value={`−${formatINR(calc.discountAmount)}`} accent /> : null}
-      <SummaryRow2 label="Taxable Value" value={formatINR(calc.taxableValue)} />
-      <SummaryRow2 label={`GST @ ${gstRate}%`} value={formatINR(calc.gstAmount)} />
+      <SummaryRow2 label="Gross Value" value={formatINR(grossValue)} />
+      {showDiscount ? <SummaryRow2 label={`Discount (${discountHint})`} value={`−${formatINR(discountAmount)}`} accent /> : null}
+      <SummaryRow2 label="Taxable Value" value={formatINR(taxableValue)} />
+      <SummaryRow2 label={`GST @ ${gstRate}%`} value={formatINR(gstAmount)} />
       <Separator className="my-3" />
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total Payable</span>
-        <span className="text-2xl font-extrabold text-primary">{formatINR(calc.totalPayable)}</span>
+        <span className="text-2xl font-extrabold text-primary">{formatINR(totalPayable)}</span>
       </div>
     </div>
   )
@@ -1111,6 +1284,7 @@ function SummaryCard({
     totalArea: number
     items: QuoteItemRow[]
     calc: ReturnType<typeof calcQuotation>
+    combined?: CombinedQuotationResult
   }
   gstRate: number
   discountHint: string
@@ -1403,30 +1577,46 @@ function BathroomStep({ draft, mutate }: { draft: DraftState; mutate: Mutate }) 
   return (
     <div className="space-y-4">
       <StepIntro
-        title="Bathroom Details"
-        desc="Add each bathroom with its dimensions — area drives the package price."
+        title="Separate Bathroom Breakdown & Measurements"
+        desc="Capture each bathroom's dimensions in feet or millimetres. Floor and wall areas are calculated with exact formulas."
       />
-      <div className="grid gap-4 md:grid-cols-2">
+
+      <div className="grid gap-5 lg:grid-cols-2">
         {draft.bathrooms.map((b, i) => {
-          const area = computeBathroomArea(toNum(b.length), toNum(b.width))
+          const unit = b.unit === 'mm' ? 'mm' : 'ft'
+          const isMm = unit === 'mm'
+          const len = toNum(b.length)
+          const wid = toNum(b.width)
+          const hgt = toNum(b.height) > 0 ? toNum(b.height) : (isMm ? 3048 : 10)
+          const openings = toNum(b.openingsArea)
+
+          const floorArea = computeFloorArea(len, wid, unit)
+          const wallArea = computeWallArea(len, wid, hgt, unit, openings)
+
+          const lenFt = isMm ? round2(len / 304.8) : len
+          const widFt = isMm ? round2(wid / 304.8) : wid
+          const perimeter = round2(2 * (len + wid))
+
           return (
-            <Card key={i} className="gap-0 rounded-2xl p-4">
-              <div className="flex items-center justify-between gap-2">
-                <Input
-                  value={b.name}
-                  onChange={(e) => update(i, { name: e.target.value })}
-                  className="h-10 max-w-[210px] border-none bg-muted/60 px-3 font-bold shadow-none"
-                  aria-label={`Bathroom ${i + 1} name`}
-                />
-                <div className="flex shrink-0 items-center gap-1">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-primary">
-                    <Ruler className="size-3.5" />
-                    {areaLabel(area)}
+            <Card key={i} className="gap-0 rounded-2xl p-4 md:p-5 shadow-sm border">
+              {/* Header */}
+              <div className="flex items-center justify-between gap-2 border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-xs font-extrabold text-primary">
+                    {i + 1}
                   </span>
+                  <Input
+                    value={b.name}
+                    onChange={(e) => update(i, { name: e.target.value })}
+                    className="h-10 max-w-[200px] border-none bg-muted/60 px-3 font-bold text-foreground shadow-none"
+                    aria-label={`Bathroom ${i + 1} name`}
+                  />
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="size-10 rounded-full"
+                    className="size-9 rounded-full"
                     onClick={() => duplicateBathroom(i)}
                     disabled={draft.bathrooms.length >= MAX_BATHROOMS}
                     aria-label={`Duplicate ${b.name}`}
@@ -1436,7 +1626,7 @@ function BathroomStep({ draft, mutate }: { draft: DraftState; mutate: Mutate }) 
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="size-10 rounded-full text-muted-foreground hover:text-destructive"
+                    className="size-9 rounded-full text-muted-foreground hover:text-destructive"
                     onClick={() => removeBathroom(i)}
                     disabled={draft.bathrooms.length <= 1}
                     aria-label={`Remove ${b.name}`}
@@ -1445,8 +1635,52 @@ function BathroomStep({ draft, mutate }: { draft: DraftState; mutate: Mutate }) 
                   </Button>
                 </div>
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <Field label="Type">
+
+              {/* Area summary pills */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-primary">
+                  <Ruler className="size-3.5" />
+                  Floor Area: {areaLabel(floorArea)}
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+                  Wall Area: {areaLabel(wallArea)}
+                </span>
+              </div>
+
+              {/* Unit Selector */}
+              <div className="mt-3.5 space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">Measurement Unit</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => update(i, { unit: 'ft' })}
+                    className={cn(
+                      'flex min-h-10 items-center justify-center rounded-xl border text-xs font-semibold transition-colors',
+                      !isMm
+                        ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary'
+                        : 'border-border bg-card text-muted-foreground hover:bg-muted/40'
+                    )}
+                  >
+                    Feet (ft)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => update(i, { unit: 'mm' })}
+                    className={cn(
+                      'flex min-h-10 items-center justify-center rounded-xl border text-xs font-semibold transition-colors',
+                      isMm
+                        ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary'
+                        : 'border-border bg-card text-muted-foreground hover:bg-muted/40'
+                    )}
+                  >
+                    Millimetres (mm)
+                  </button>
+                </div>
+              </div>
+
+              {/* Dimensions Input Grid */}
+              <div className="mt-3.5 grid gap-3 sm:grid-cols-2">
+                <Field label="Bathroom Type">
                   <Select value={b.type} onValueChange={(v) => update(i, { type: v })}>
                     <SelectTrigger className="min-h-11 w-full" aria-label={`${b.name} type`}>
                       <SelectValue />
@@ -1460,47 +1694,101 @@ function BathroomStep({ draft, mutate }: { draft: DraftState; mutate: Mutate }) 
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field label="Length (ft)" required>
+                <Field label={`Length (${unit})`} required>
                   <Input
                     type="number"
                     min="0"
-                    step="0.1"
+                    step={isMm ? '1' : '0.1'}
                     inputMode="decimal"
                     value={b.length}
                     onChange={(e) => update(i, { length: e.target.value })}
-                    placeholder="e.g. 9"
+                    placeholder={isMm ? 'e.g. 2743' : 'e.g. 9'}
                     className="min-h-11"
                   />
                 </Field>
-                <Field label="Width (ft)" required>
+                <Field label={`Width (${unit})`} required>
                   <Input
                     type="number"
                     min="0"
-                    step="0.1"
+                    step={isMm ? '1' : '0.1'}
                     inputMode="decimal"
                     value={b.width}
                     onChange={(e) => update(i, { width: e.target.value })}
-                    placeholder="e.g. 5"
+                    placeholder={isMm ? 'e.g. 1524' : 'e.g. 5'}
                     className="min-h-11"
                   />
                 </Field>
-                <Field label="Height (ft, optional)">
+                <Field label={`Wall Height (${unit})`}>
+                  <Input
+                    type="number"
+                    min="0"
+                    step={isMm ? '1' : '0.1'}
+                    inputMode="decimal"
+                    value={b.height}
+                    onChange={(e) => update(i, { height: e.target.value })}
+                    placeholder={isMm ? 'e.g. 3048' : 'e.g. 10'}
+                    className="min-h-11"
+                  />
+                </Field>
+                <Field label="Openings Deduction (sq.ft, optional)" className="sm:col-span-2">
                   <Input
                     type="number"
                     min="0"
                     step="0.1"
                     inputMode="decimal"
-                    value={b.height}
-                    onChange={(e) => update(i, { height: e.target.value })}
-                    placeholder="e.g. 10"
+                    value={b.openingsArea}
+                    onChange={(e) => update(i, { openingsArea: e.target.value })}
+                    placeholder="e.g. 21 (doors and windows deduction)"
                     className="min-h-11"
                   />
                 </Field>
+              </div>
+
+              {/* Exact Formula & Calculation breakdown */}
+              <div className="mt-4 rounded-xl border border-dashed bg-muted/40 p-3 text-[11px] leading-relaxed text-muted-foreground">
+                <div className="font-bold uppercase tracking-wider text-foreground text-[10px] mb-1">
+                  Measurement Calculations
+                </div>
+                {isMm ? (
+                  <div className="space-y-1">
+                    <div>
+                      • Length in feet = {len || 0} mm / 304.8 = <b className="text-foreground">{lenFt} ft</b>
+                    </div>
+                    <div>
+                      • Width in feet = {wid || 0} mm / 304.8 = <b className="text-foreground">{widFt} ft</b>
+                    </div>
+                    <div>
+                      • Floor area = {len || 0} mm × {wid || 0} mm / 92,903.04 = <b className="text-primary">{floorArea} sq.ft</b>
+                    </div>
+                    <div>
+                      • Wall perimeter = 2 × ({len || 0} + {wid || 0}) = {perimeter} mm
+                    </div>
+                    <div>
+                      • Wall area = (2 × ({len || 0} + {wid || 0}) × {hgt}) / 92,903.04 {openings > 0 ? `− ${openings} sq.ft openings` : ''} = <b className="text-foreground">{wallArea} sq.ft</b>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <div>
+                      • Floor area = Length ({len || 0} ft) × Width ({wid || 0} ft) = <b className="text-primary">{floorArea} sq.ft</b>
+                    </div>
+                    <div>
+                      • Wall perimeter = 2 × ({len || 0} + {wid || 0}) = {perimeter} ft
+                    </div>
+                    <div>
+                      • Wall area = {perimeter} ft × {hgt} ft {openings > 0 ? `− ${openings} sq.ft openings` : ''} = <b className="text-foreground">{wallArea} sq.ft</b>
+                    </div>
+                  </div>
+                )}
+                <p className="mt-1.5 text-[10px] italic text-muted-foreground">
+                  * Wall area is calculated from wall lengths &amp; height — never calculated from floor area alone.
+                </p>
               </div>
             </Card>
           )
         })}
       </div>
+
       <Button
         variant="outline"
         className="min-h-11 gap-2 border-dashed font-semibold"
@@ -1508,7 +1796,7 @@ function BathroomStep({ draft, mutate }: { draft: DraftState; mutate: Mutate }) 
         disabled={draft.bathrooms.length >= MAX_BATHROOMS}
       >
         <Plus className="size-4" />
-        Add Bathroom
+        Add Another Bathroom
       </Button>
     </div>
   )
@@ -1942,172 +2230,411 @@ function CostStep({
     totalArea: number
     items: QuoteItemRow[]
     calc: ReturnType<typeof calcQuotation>
+    combined: CombinedQuotationResult
   }
   gstRate: number
   discountHint: string
 }) {
   const calc = quote.calc
-  const groups = (['TILES', 'FIXTURES', 'ADDONS', 'OTHER'] as const)
-    .map((section) => ({
-      section,
-      label: SECTION_LABELS[section],
-      items: quote.items.filter((i) => i.section === section),
-    }))
-    .filter((g) => g.items.length > 0)
+  const combined = quote.combined
+  const bathrooms = combined.bathrooms
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <StepIntro
-        title="Cost, Discount & Notes"
-        desc="Prices come from the catalogue — review the breakdown and apply a discount if needed."
+        title="Cost, Separate Bathroom Breakdown & Combined Settlement"
+        desc="Review each bathroom's detailed materials & labour, comparison totals, and final project settlement."
       />
 
-      <Card className="gap-0 rounded-2xl p-4 md:p-5">
-        <h3 className="text-sm font-bold text-foreground">Discount</h3>
-        <div className="mt-3 grid gap-3 sm:grid-cols-[200px_1fr]">
-          <Field label="Type">
-            <Select
-              value={draft.discountType}
-              onValueChange={(v) => mutate({ discountType: v === 'PERCENT' ? 'PERCENT' : 'FLAT' })}
-            >
-              <SelectTrigger className="min-h-11 w-full" aria-label="Discount type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="FLAT">₹ Flat Amount</SelectItem>
-                <SelectItem value="PERCENT">% of Gross Value</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label={draft.discountType === 'PERCENT' ? 'Discount %' : 'Discount Amount (₹)'}>
-            <Input
-              type="number"
-              min="0"
-              step={draft.discountType === 'PERCENT' ? '1' : '100'}
-              inputMode="decimal"
-              value={draft.discount}
-              onChange={(e) => mutate({ discount: e.target.value })}
-              placeholder={draft.discountType === 'PERCENT' ? 'e.g. 5' : 'e.g. 5000'}
-              className="min-h-11"
-            />
-          </Field>
-        </div>
-        {calc.discountAmount > 0 ? (
-          <p className="mt-3 text-xs font-semibold text-primary">
-            Discount applied: −{formatINR(calc.discountAmount)} ({discountHint})
+      {/* Project-wide discount & notes inputs */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="gap-0 rounded-2xl p-4 md:p-5 shadow-sm border">
+          <h3 className="text-sm font-bold text-foreground">Project-Wide Discount</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Apply a discount across the entire quotation subtotal.
           </p>
-        ) : null}
-      </Card>
+          <div className="mt-3.5 grid gap-3 sm:grid-cols-[160px_1fr]">
+            <Field label="Discount Type">
+              <Select
+                value={draft.discountType}
+                onValueChange={(v) => mutate({ discountType: v === 'PERCENT' ? 'PERCENT' : 'FLAT' })}
+              >
+                <SelectTrigger className="min-h-11 w-full" aria-label="Discount type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="FLAT">₹ Flat Amount</SelectItem>
+                  <SelectItem value="PERCENT">% of Subtotal</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label={draft.discountType === 'PERCENT' ? 'Discount %' : 'Discount Amount (₹)'}>
+              <Input
+                type="number"
+                min="0"
+                step={draft.discountType === 'PERCENT' ? '1' : '100'}
+                inputMode="decimal"
+                value={draft.discount}
+                onChange={(e) => mutate({ discount: e.target.value })}
+                placeholder={draft.discountType === 'PERCENT' ? 'e.g. 5' : 'e.g. 5000'}
+                className="min-h-11"
+              />
+            </Field>
+          </div>
+          {combined.projectDiscountAmount > 0 ? (
+            <p className="mt-3 text-xs font-semibold text-primary">
+              Discount applied: −{formatINR(combined.projectDiscountAmount)} ({discountHint})
+            </p>
+          ) : null}
+        </Card>
 
-      <Card className="gap-0 rounded-2xl p-4 md:p-5">
-        <h3 className="text-sm font-bold text-foreground">Notes</h3>
-        <Textarea
-          value={draft.notes}
-          onChange={(e) => mutate({ notes: e.target.value })}
-          placeholder="Optional notes shown on the printed quotation (scope, exclusions, brand preferences…)…"
-          className="mt-2 min-h-24"
-        />
-      </Card>
+        <Card className="gap-0 rounded-2xl p-4 md:p-5 shadow-sm border">
+          <h3 className="text-sm font-bold text-foreground">Quotation Notes</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Scope notes, brand specifications, and delivery terms.
+          </p>
+          <Textarea
+            value={draft.notes}
+            onChange={(e) => mutate({ notes: e.target.value })}
+            placeholder="e.g. Full wall tiling up to ceiling height; Jaquar sanitaryware; 10-year warranty on waterproofing…"
+            className="mt-3.5 min-h-[92px]"
+          />
+        </Card>
+      </div>
 
-      <Card className="gap-0 overflow-hidden rounded-2xl">
-        <div className="px-4 pt-4 md:px-5 md:pt-5">
-          <h3 className="text-sm font-bold text-foreground">Cost Breakdown</h3>
+      {/* ------------------------------------------------------------------ */}
+      {/* 1, 2, 3: Separate Bathroom-Wise Breakdowns */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-extrabold text-foreground">
+              1. Separate Bathroom-Wise Breakdown ({bathrooms.length} {bathrooms.length === 1 ? 'Bathroom' : 'Bathrooms'})
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Individual scope, dimensions, floor &amp; wall areas, materials, fixtures, accessories, and labour for each bathroom.
+            </p>
+          </div>
         </div>
-        <div className="overflow-x-auto p-4 md:p-5">
-          <table className="w-full min-w-[520px] text-sm">
+
+        <div className="grid gap-5">
+          {bathrooms.map((b, idx) => {
+            const isMm = b.unit === 'mm'
+            const wallH = b.height || (isMm ? 3048 : 10)
+
+            return (
+              <Card key={idx} className="gap-0 overflow-hidden rounded-2xl border shadow-sm">
+                {/* Bathroom Card Header */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/40 p-4">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex size-7 items-center justify-center rounded-full bg-primary text-xs font-extrabold text-white">
+                      {idx + 1}
+                    </span>
+                    <div>
+                      <h4 className="text-sm font-bold text-foreground">{b.name}</h4>
+                      <p className="text-[11px] text-muted-foreground">
+                        {bathroomTypeLabels[b.type] ?? b.type} · Dimensions: {b.length} × {b.width} × {wallH} {b.unit}
+                        {isMm ? ` (${b.lengthInFeet} × ${b.widthInFeet} × ${b.heightInFeet} ft)` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-orange-100/70 px-2.5 py-1 text-xs font-bold text-primary">
+                      Floor: {b.floorAreaSqft} sq.ft
+                    </span>
+                    <span className="rounded-full bg-slate-200/70 px-2.5 py-1 text-xs font-bold text-slate-800">
+                      Wall: {b.wallAreaSqft} sq.ft
+                    </span>
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-extrabold text-emerald-800">
+                      Subtotal: {formatINR(b.bathroomSubtotal)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Bathroom Items Breakdown */}
+                <div className="overflow-x-auto p-4">
+                  <table className="w-full min-w-[540px] text-xs">
+                    <thead>
+                      <tr className="border-b text-[10px] uppercase tracking-wider text-muted-foreground">
+                        <th className="py-2 text-left font-semibold">Scope Item</th>
+                        <th className="py-2 text-right font-semibold">Qty</th>
+                        <th className="py-2 text-right font-semibold">Unit</th>
+                        <th className="py-2 text-right font-semibold">Rate</th>
+                        <th className="py-2 text-right font-semibold">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Selected Materials & Tile Requirements */}
+                      {b.tiles.length > 0 ? (
+                        <>
+                          <tr className="bg-muted/40">
+                            <td colSpan={5} className="py-1 px-2 font-bold uppercase tracking-wider text-[10px] text-foreground">
+                              Selected Materials &amp; Tile Requirements
+                            </td>
+                          </tr>
+                          {b.tiles.map((item, i) => (
+                            <tr key={`t-${i}`} className="border-b border-border/50">
+                              <td className="py-2 font-medium text-foreground">{item.name}</td>
+                              <td className="py-2 text-right tabular-nums">{item.quantity}</td>
+                              <td className="py-2 text-right text-muted-foreground">{item.unit}</td>
+                              <td className="py-2 text-right tabular-nums">{formatINR(item.rate)}</td>
+                              <td className="py-2 text-right font-semibold tabular-nums">{formatINR(item.amount ?? item.quantity * item.rate)}</td>
+                            </tr>
+                          ))}
+                        </>
+                      ) : null}
+
+                      {/* Fixtures and Fittings */}
+                      {b.fixtures.length > 0 ? (
+                        <>
+                          <tr className="bg-muted/40">
+                            <td colSpan={5} className="py-1 px-2 font-bold uppercase tracking-wider text-[10px] text-foreground">
+                              Fixtures and Fittings
+                            </td>
+                          </tr>
+                          {b.fixtures.map((item, i) => (
+                            <tr key={`f-${i}`} className="border-b border-border/50">
+                              <td className="py-2 font-medium text-foreground">{item.name}</td>
+                              <td className="py-2 text-right tabular-nums">{item.quantity}</td>
+                              <td className="py-2 text-right text-muted-foreground">{item.unit}</td>
+                              <td className="py-2 text-right tabular-nums">{formatINR(item.rate)}</td>
+                              <td className="py-2 text-right font-semibold tabular-nums">{formatINR(item.amount ?? item.quantity * item.rate)}</td>
+                            </tr>
+                          ))}
+                        </>
+                      ) : null}
+
+                      {/* Accessories */}
+                      {b.accessories.length > 0 ? (
+                        <>
+                          <tr className="bg-muted/40">
+                            <td colSpan={5} className="py-1 px-2 font-bold uppercase tracking-wider text-[10px] text-foreground">
+                              Accessories
+                            </td>
+                          </tr>
+                          {b.accessories.map((item, i) => (
+                            <tr key={`a-${i}`} className="border-b border-border/50">
+                              <td className="py-2 font-medium text-foreground">{item.name}</td>
+                              <td className="py-2 text-right tabular-nums">{item.quantity}</td>
+                              <td className="py-2 text-right text-muted-foreground">{item.unit}</td>
+                              <td className="py-2 text-right tabular-nums">{formatINR(item.rate)}</td>
+                              <td className="py-2 text-right font-semibold tabular-nums">{formatINR(item.amount ?? item.quantity * item.rate)}</td>
+                            </tr>
+                          ))}
+                        </>
+                      ) : null}
+
+                      {/* Labour Charges */}
+                      {b.labour.length > 0 ? (
+                        <>
+                          <tr className="bg-muted/40">
+                            <td colSpan={5} className="py-1 px-2 font-bold uppercase tracking-wider text-[10px] text-foreground">
+                              Labour Charges
+                            </td>
+                          </tr>
+                          {b.labour.map((item, i) => (
+                            <tr key={`l-${i}`} className="border-b border-border/50">
+                              <td className="py-2 font-medium text-foreground">{item.name}</td>
+                              <td className="py-2 text-right tabular-nums">{item.quantity}</td>
+                              <td className="py-2 text-right text-muted-foreground">{item.unit}</td>
+                              <td className="py-2 text-right tabular-nums">{formatINR(item.rate)}</td>
+                              <td className="py-2 text-right font-semibold tabular-nums">{formatINR(item.amount ?? item.quantity * item.rate)}</td>
+                            </tr>
+                          ))}
+                        </>
+                      ) : null}
+
+                      {/* Additional Work */}
+                      {b.additionalWork.length > 0 ? (
+                        <>
+                          <tr className="bg-muted/40">
+                            <td colSpan={5} className="py-1 px-2 font-bold uppercase tracking-wider text-[10px] text-foreground">
+                              Additional Work
+                            </td>
+                          </tr>
+                          {b.additionalWork.map((item, i) => (
+                            <tr key={`add-${i}`} className="border-b border-border/50">
+                              <td className="py-2 font-medium text-foreground">{item.name}</td>
+                              <td className="py-2 text-right tabular-nums">{item.quantity}</td>
+                              <td className="py-2 text-right text-muted-foreground">{item.unit}</td>
+                              <td className="py-2 text-right tabular-nums">{formatINR(item.rate)}</td>
+                              <td className="py-2 text-right font-semibold tabular-nums">{formatINR(item.amount ?? item.quantity * item.rate)}</td>
+                            </tr>
+                          ))}
+                        </>
+                      ) : null}
+                    </tbody>
+
+                    {/* Bathroom Subtotal Footer */}
+                    <tfoot className="border-t bg-muted/20">
+                      <tr>
+                        <td colSpan={4} className="py-2 text-right font-medium text-muted-foreground">
+                          Bathroom Gross Value
+                        </td>
+                        <td className="py-2 text-right font-semibold tabular-nums">{formatINR(b.bathroomGross)}</td>
+                      </tr>
+                      {b.discountAmount > 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-1 text-right text-muted-foreground">
+                            Discount
+                          </td>
+                          <td className="py-1 text-right font-semibold tabular-nums text-orange-600">
+                            −{formatINR(b.discountAmount)}
+                          </td>
+                        </tr>
+                      ) : null}
+                      <tr>
+                        <td colSpan={4} className="py-1 text-right text-muted-foreground">
+                          Taxable Value
+                        </td>
+                        <td className="py-1 text-right font-semibold tabular-nums">{formatINR(b.taxableValue)}</td>
+                      </tr>
+                      <tr>
+                        <td colSpan={4} className="py-1 text-right text-muted-foreground">
+                          Taxes (GST @ {b.gstRate}%)
+                        </td>
+                        <td className="py-1 text-right font-semibold tabular-nums">{formatINR(b.gstAmount)}</td>
+                      </tr>
+                      <tr className="border-t border-primary/20 bg-orange-50/50">
+                        <td colSpan={4} className="py-2.5 text-right font-bold text-foreground">
+                          {b.name} Subtotal
+                        </td>
+                        <td className="py-2.5 text-right text-base font-extrabold tabular-nums text-primary">
+                          {formatINR(b.bathroomSubtotal)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 4. Bathroom-Wise Material and Labour Totals (Comparison Table) */}
+      {/* ------------------------------------------------------------------ */}
+      <Card className="gap-0 overflow-hidden rounded-2xl border shadow-sm">
+        <div className="border-b bg-muted/40 p-4">
+          <h3 className="text-sm font-bold text-foreground">
+            4. Bathroom-Wise Material and Labour Totals
+          </h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Side-by-side comparison across all bathrooms in scope.
+          </p>
+        </div>
+        <div className="overflow-x-auto p-4">
+          <table className="w-full min-w-[700px] text-xs">
             <thead>
               <tr className="border-b text-[10px] uppercase tracking-wider text-muted-foreground">
-                <th className="py-2 text-left font-semibold">Item</th>
-                <th className="py-2 text-right font-semibold">Qty</th>
-                <th className="py-2 text-right font-semibold">Unit</th>
-                <th className="py-2 text-right font-semibold">Rate</th>
-                <th className="py-2 text-right font-semibold">Amount</th>
+                <th className="py-2 text-left font-semibold">Bathroom</th>
+                <th className="py-2 text-right font-semibold">Floor Area</th>
+                <th className="py-2 text-right font-semibold">Wall Area</th>
+                <th className="py-2 text-right font-semibold">Materials</th>
+                <th className="py-2 text-right font-semibold">Fixtures</th>
+                <th className="py-2 text-right font-semibold">Accessories</th>
+                <th className="py-2 text-right font-semibold">Labour</th>
+                <th className="py-2 text-right font-semibold">Addl. Work</th>
+                <th className="py-2 text-right font-semibold">Gross</th>
+                <th className="py-2 text-right font-semibold">Taxes</th>
+                <th className="py-2 text-right font-semibold">Subtotal</th>
               </tr>
             </thead>
             <tbody>
-              <tr className="border-b border-dashed">
-                <td className="py-2.5 font-semibold text-foreground">
-                  {quote.pkg?.name ?? 'Package'}
-                  <span className="block text-xs font-normal text-muted-foreground">
-                    {areaLabel(calc.totalArea)} × {formatINR(quote.pkg?.pricePerSqft ?? 0)}/sq.ft
-                  </span>
-                </td>
-                <td className="py-2.5 text-right tabular-nums">{calc.totalArea}</td>
-                <td className="py-2.5 text-right text-muted-foreground">sq.ft</td>
-                <td className="py-2.5 text-right tabular-nums">{formatINR(quote.pkg?.pricePerSqft ?? 0)}</td>
-                <td className="py-2.5 text-right font-semibold tabular-nums">{formatINR(calc.packageAmount)}</td>
-              </tr>
-              {groups.map((g) => (
-                <Fragment key={g.section}>
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="bg-muted/60 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
-                    >
-                      {g.label}
-                    </td>
-                  </tr>
-                  {g.items.map((item, idx) => (
-                    <tr key={`${g.section}-${idx}`} className="border-b border-border/60">
-                      <td className="py-2.5 text-foreground">{item.name}</td>
-                      <td className="py-2.5 text-right tabular-nums">{item.quantity}</td>
-                      <td className="py-2.5 text-right text-muted-foreground">{item.unit}</td>
-                      <td className="py-2.5 text-right tabular-nums">{formatINR(item.rate)}</td>
-                      <td className="py-2.5 text-right font-semibold tabular-nums">{formatINR(item.amount)}</td>
-                    </tr>
-                  ))}
-                </Fragment>
-              ))}
-              {groups.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-4 text-center text-xs italic text-muted-foreground">
-                    No line items — package charges only.
-                  </td>
+              {combined.summaryByBathroom.map((row, i) => (
+                <tr key={i} className="border-b border-border/60 hover:bg-muted/20">
+                  <td className="py-2.5 font-bold text-foreground">{row.name}</td>
+                  <td className="py-2.5 text-right tabular-nums text-muted-foreground">{row.floorAreaSqft} sq.ft</td>
+                  <td className="py-2.5 text-right tabular-nums text-muted-foreground">{row.wallAreaSqft} sq.ft</td>
+                  <td className="py-2.5 text-right tabular-nums">{formatINR(row.materialsTotal)}</td>
+                  <td className="py-2.5 text-right tabular-nums">{formatINR(row.fixturesTotal)}</td>
+                  <td className="py-2.5 text-right tabular-nums">{formatINR(row.accessoriesTotal)}</td>
+                  <td className="py-2.5 text-right tabular-nums">{formatINR(row.labourTotal)}</td>
+                  <td className="py-2.5 text-right tabular-nums">{formatINR(row.additionalWorkTotal)}</td>
+                  <td className="py-2.5 text-right font-semibold tabular-nums">{formatINR(row.bathroomGross)}</td>
+                  <td className="py-2.5 text-right tabular-nums text-muted-foreground">{formatINR(row.gstAmount)}</td>
+                  <td className="py-2.5 text-right font-extrabold tabular-nums text-primary">{formatINR(row.bathroomSubtotal)}</td>
                 </tr>
-              ) : null}
+              ))}
             </tbody>
             <tfoot>
-              <tr className="border-t">
-                <td colSpan={4} className="pt-3 text-sm text-muted-foreground">
-                  Gross Value
-                </td>
-                <td className="pt-3 text-right font-semibold tabular-nums">{formatINR(calc.grossValue)}</td>
-              </tr>
-              {calc.discountAmount > 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-1 text-sm text-muted-foreground">
-                    Discount ({discountHint})
-                  </td>
-                  <td className="py-1 text-right font-semibold tabular-nums text-orange-600">
-                    −{formatINR(calc.discountAmount)}
-                  </td>
-                </tr>
-              ) : null}
-              <tr>
-                <td colSpan={4} className="py-1 text-sm text-muted-foreground">
-                  Taxable Value
-                </td>
-                <td className="py-1 text-right font-semibold tabular-nums">{formatINR(calc.taxableValue)}</td>
-              </tr>
-              <tr>
-                <td colSpan={4} className="py-1 text-sm text-muted-foreground">
-                  GST @ {gstRate}%
-                </td>
-                <td className="py-1 text-right font-semibold tabular-nums">{formatINR(calc.gstAmount)}</td>
-              </tr>
-              <tr className="border-t">
-                <td colSpan={4} className="pt-3 text-sm font-bold uppercase tracking-wide text-foreground">
-                  Total Payable
-                </td>
-                <td className="pt-3 text-right text-xl font-extrabold tabular-nums text-primary">
-                  {formatINR(calc.totalPayable)}
+              <tr className="border-t bg-muted/40 font-bold">
+                <td className="py-3 text-foreground">Project Totals</td>
+                <td className="py-3 text-right tabular-nums">{combined.totalFloorArea} sq.ft</td>
+                <td className="py-3 text-right tabular-nums">{combined.totalWallArea} sq.ft</td>
+                <td className="py-3 text-right tabular-nums">{formatINR(combined.totalMaterials)}</td>
+                <td className="py-3 text-right tabular-nums">{formatINR(combined.totalFixtures)}</td>
+                <td className="py-3 text-right tabular-nums">{formatINR(combined.totalAccessories)}</td>
+                <td className="py-3 text-right tabular-nums">{formatINR(combined.totalLabour)}</td>
+                <td className="py-3 text-right tabular-nums">{formatINR(combined.totalAdditionalWork)}</td>
+                <td className="py-3 text-right tabular-nums">{formatINR(combined.totalBathroomGross)}</td>
+                <td className="py-3 text-right tabular-nums">{formatINR(combined.projectGstAmount)}</td>
+                <td className="py-3 text-right text-sm font-extrabold tabular-nums text-primary">
+                  {formatINR(combined.totalProjectSubtotal)}
                 </td>
               </tr>
             </tfoot>
           </table>
-          <p className="mt-3 text-[10px] text-muted-foreground">
-            Preview amounts are computed locally — the server recalculates every figure from master data when the
-            quote is saved.
+        </div>
+      </Card>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* 5, 6, 7, 8: Combined Quotation Settlement */}
+      {/* ------------------------------------------------------------------ */}
+      <Card className="gap-0 rounded-2xl border p-5 shadow-sm">
+        <h3 className="text-sm font-bold text-foreground">Combined Quotation Settlement</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Consolidated calculation summing individual bathroom amounts and project adjustments.
+        </p>
+
+        <div className="mt-4 space-y-2.5 border-t pt-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium text-foreground">5. Total Project Subtotal (Sum of Bathrooms)</span>
+            <span className="font-bold tabular-nums text-foreground">{formatINR(combined.totalProjectSubtotal)}</span>
+          </div>
+
+          {combined.projectDiscountAmount > 0 ? (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">6. Project-Wide Discounts ({discountHint})</span>
+              <span className="font-semibold tabular-nums text-orange-600">−{formatINR(combined.projectDiscountAmount)}</span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>6. Project-Wide Discounts</span>
+              <span className="tabular-nums">₹0 (None applied)</span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">7. Applicable Taxes (GST @ {combined.gstRate}%)</span>
+            <span className="font-semibold tabular-nums text-foreground">{formatINR(combined.projectGstAmount)}</span>
+          </div>
+
+          <Separator className="my-2" />
+
+          <div className="flex items-baseline justify-between">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                8. Final Quotation Amount
+              </span>
+              <p className="text-[11px] text-muted-foreground">
+                Sum of {bathrooms.length} individual bathroom subtotals + project-level adjustments
+              </p>
+            </div>
+            <span className="text-2xl font-extrabold tabular-nums text-primary">
+              {formatINR(combined.finalQuotationAmount)}
+            </span>
+          </div>
+        </div>
+
+        {/* Verification Check Callout */}
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900 flex items-start gap-2">
+          <Check className="size-4 shrink-0 mt-0.5 text-emerald-600" />
+          <p>
+            <b>Combined Total Verified:</b> The final quotation amount (<b>{formatINR(combined.finalQuotationAmount)}</b>)
+            strictly matches the sum of the individual bathroom amounts (<b>{formatINR(combined.totalProjectSubtotal)}</b>)
+            and all explicitly defined project-level adjustments.
           </p>
         </div>
       </Card>
