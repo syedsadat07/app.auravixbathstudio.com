@@ -166,7 +166,7 @@ export async function POST(req: Request) {
           })
           const v = await createVersionFromPayload({ quotation: q, payload, user, tx })
           return { q, v }
-        })
+        }, { timeout: 30_000 })
         quotation = { id: result.q.id, quotationNumber: result.q.quotationNumber, createdAt: result.q.createdAt, validityDays: result.q.validityDays }
         version = result.v
       } catch (e) {

@@ -573,5 +573,5 @@ export async function createVersionFromPayload(opts: {
   }
 
   if (opts.tx) return run(opts.tx)
-  return db.$transaction(run)
+  return db.$transaction(run, { timeout: 30_000 })
 }
