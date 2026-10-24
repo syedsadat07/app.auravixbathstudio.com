@@ -20,6 +20,8 @@ export type AppView =
   | 'orders'
   | 'appointments'
   | 'materials'
+  | 'bundles'
+  | 'inventory'
   | 'packages'
   | 'reports'
   | 'admins'

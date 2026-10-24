@@ -64,6 +64,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (!Number.isFinite(wastagePercent) || wastagePercent < 0) throw new ApiError(400, 'Invalid wastagePercent')
       data.wastagePercent = wastagePercent
     }
+    if (body.purchaseCost !== undefined) {
+      const purchaseCost = Number(body.purchaseCost)
+      if (!Number.isFinite(purchaseCost) || purchaseCost < 0) throw new ApiError(400, 'Invalid purchaseCost')
+      data.purchaseCost = purchaseCost
+    }
+    if (body.packageQty !== undefined) {
+      const packageQty = Number(body.packageQty)
+      if (!Number.isFinite(packageQty) || packageQty <= 0) throw new ApiError(400, 'Invalid packageQty')
+      data.packageQty = packageQty
+    }
+    if (body.supplier !== undefined) {
+      const supplier = body.supplier === null ? null : String(body.supplier).trim() || null
+      data.supplier = supplier
+    }
+    if (body.stockQty !== undefined) {
+      const stockQty = Number(body.stockQty)
+      if (!Number.isFinite(stockQty) || stockQty < 0) throw new ApiError(400, 'Invalid stockQty')
+      data.stockQty = stockQty
+    }
+    if (body.reorderThreshold !== undefined) {
+      const reorderThreshold = body.reorderThreshold === null ? null : Number(body.reorderThreshold)
+      data.reorderThreshold = reorderThreshold
+    }
     if (body.categoryId !== undefined) {
       const categoryId = String(body.categoryId)
       const category = await db.materialCategory.findUnique({ where: { id: categoryId } })

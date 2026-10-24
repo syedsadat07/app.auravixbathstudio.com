@@ -25,6 +25,8 @@ model User {
   versions           QuotationVersion[]
   auditLogs          AuditLog[]
   appointments       Appointment[]
+  inventoryTx        InventoryTransaction[]
+  bundlesCreated     BrandBundle[]
 }
 
 model Customer {
@@ -79,25 +81,40 @@ model MaterialCategory {
 }
 
 model Material {
-  id             String           @id @default(cuid())
-  categoryId     String
-  category       MaterialCategory @relation(fields: [categoryId], references: [id])
-  name           String
-  subCategory    String?
-  brand          String?
-  sku            String?
-  description    String?
-  price          Float            @default(0)
-  unit           String           @default("piece")
-  coverage       Float            @default(1)
-  coverageUnit   String           @default("sq.ft")
-  wastagePercent Float            @default(0)
-  quantityRule   String           @default("PIECE") // AREA | PIECE | FIXED
-  imageUrl       String?
-  status         String           @default("ACTIVE") // ACTIVE | INACTIVE
-  createdById    String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id               String           @id @default(cuid())
+  categoryId       String
+  category         MaterialCategory @relation(fields: [categoryId], references: [id])
+  name             String
+  subCategory      String?
+  brand            String?
+  sku              String?
+  description      String?
+  // Pricing
+  purchaseCost     Float            @default(0)    // Buy/COGS price
+  price            Float            @default(0)    // Selling price (used in quotations)
+  unit             String           @default("piece")
+  // Coverage (for area-based materials like tiles)
+  coverage         Float            @default(1)
+  coverageUnit     String           @default("sq.ft")
+  wastagePercent   Float            @default(0)
+  quantityRule     String           @default("PIECE") // AREA | PIECE | FIXED
+  // Logistics
+  packageQty       Float            @default(1)    // Units per box/pack
+  supplier         String?
+  imageUrl         String?
+  status           String           @default("ACTIVE") // ACTIVE | INACTIVE
+  // Inventory
+  stockQty         Float            @default(0)
+  reservedQty      Float            @default(0)    // Reserved for approved orders
+  reorderThreshold Float?
+  // Audit
+  createdById      String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  // Relations
+  bundleItems      BrandBundleItem[]
+  inventoryTx      InventoryTransaction[]
+  reservations     StockReservation[]
 }
 
 model Package {
@@ -109,6 +126,41 @@ model Package {
   status       String   @default("ACTIVE")
   updatedAt    DateTime @updatedAt
 }
+
+// ---------------------------------------------------------------------------
+// Brand Bundles
+// ---------------------------------------------------------------------------
+
+model BrandBundle {
+  id          String            @id @default(cuid())
+  name        String            @unique
+  bundleType  String            @default("BASIC") // BASIC | PREMIUM | LUXURY | CUSTOM
+  description String?
+  status      String            @default("ACTIVE") // ACTIVE | INACTIVE
+  createdById String?
+  createdBy   User?             @relation(fields: [createdById], references: [id])
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  items       BrandBundleItem[]
+}
+
+model BrandBundleItem {
+  id             String      @id @default(cuid())
+  bundleId       String
+  bundle         BrandBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  materialId     String
+  material       Material    @relation(fields: [materialId], references: [id])
+  quantity       Float       @default(1)
+  unit           String
+  rate           Float       @default(0) // Snapshot of price at bundle creation
+  installCost    Float       @default(0) // Applicable installation cost
+  sortOrder      Int         @default(0)
+  notes          String?
+}
+
+// ---------------------------------------------------------------------------
+// Quotation Models
+// ---------------------------------------------------------------------------
 
 model Quotation {
   id              String             @id @default(cuid())
@@ -147,12 +199,16 @@ model QuotationVersion {
   gstRate        Float           @default(18)
   gstAmount      Float           @default(0)
   totalPayable   Float           @default(0)
+  // Brand bundle snapshot
+  bundleId       String?
+  bundleName     String?
   notes          String?
   createdById    String
   createdBy      User            @relation(fields: [createdById], references: [id])
   createdAt      DateTime        @default(now())
   bathrooms      Bathroom[]
   items          QuotationItem[]
+  reservations   StockReservation[]
 
   @@unique([quotationId, versionNumber])
 }
@@ -171,6 +227,8 @@ model Bathroom {
   wallAreaSqft Float?           @default(0)
   openingsArea Float?           @default(0)
   breakdown    String?
+  // Per-bathroom fixture selections (JSON snapshot)
+  fixtureSnapshot String?       // JSON: [{materialId, name, brand, qty, unit, rate}]
 }
 
 model QuotationItem {
@@ -181,10 +239,47 @@ model QuotationItem {
   materialId String?
   bathroomId String?
   name       String
+  brand      String?           // Snapshot
+  sku        String?           // Snapshot
   quantity   Float
   unit       String
   rate       Float
   amount     Float
+  reservations StockReservation[]
+}
+
+// ---------------------------------------------------------------------------
+// Inventory
+// ---------------------------------------------------------------------------
+
+model InventoryTransaction {
+  id          String    @id @default(cuid())
+  materialId  String
+  material    Material  @relation(fields: [materialId], references: [id])
+  type        String    // RECEIVED | ISSUED | ADJUSTED | RESERVED | RELEASED | RETURNED
+  qty         Float     // Positive = in, Negative = out (for ISSUED/ADJUSTED)
+  refType     String?   // QUOTATION | ORDER | MANUAL | RETURN
+  refId       String?   // quotationVersionId / orderId / null
+  notes       String?
+  supplier    String?
+  purchaseCost Float?
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+}
+
+model StockReservation {
+  id             String           @id @default(cuid())
+  versionId      String
+  version        QuotationVersion @relation(fields: [versionId], references: [id])
+  itemId         String?
+  item           QuotationItem?   @relation(fields: [itemId], references: [id])
+  materialId     String
+  material       Material         @relation(fields: [materialId], references: [id])
+  qtyReserved    Float
+  status         String           @default("RESERVED") // RESERVED | RELEASED | DISPATCHED
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 }
 
 model AuditLog {

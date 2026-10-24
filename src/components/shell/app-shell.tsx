@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import {
   BarChart3,
   BookUser,
+  Boxes,
   Eye,
   EyeOff,
   FileText,
@@ -22,6 +23,7 @@ import {
   ShoppingBag,
   UserCog,
   Users,
+  Warehouse,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -76,6 +78,8 @@ const MAIN_NAV: NavItem[] = [
 
 const ADMIN_NAV: NavItem[] = [
   { view: 'materials', label: 'Materials', icon: Layers },
+  { view: 'bundles', label: 'Brand Bundles', icon: Boxes },
+  { view: 'inventory', label: 'Inventory & Stock', icon: Warehouse },
   { view: 'admins', label: 'Admin Management', icon: UserCog },
   { view: 'settings', label: 'Settings', icon: Settings },
   { view: 'audit-logs', label: 'Audit Logs', icon: ShieldCheck },

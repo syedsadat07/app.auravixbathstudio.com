@@ -59,12 +59,17 @@ interface Material {
   brand: string | null
   sku: string | null
   description: string | null
+  purchaseCost?: number
   price: number
   unit: string
   coverage: number
   coverageUnit: string
   wastagePercent: number
   quantityRule: string
+  packageQty?: number
+  supplier?: string | null
+  stockQty?: number
+  reorderThreshold?: number | null
   imageUrl: string | null
   status: string
   category: { id: string; name: string }
@@ -87,12 +92,17 @@ const EMPTY_FORM = {
   brand: '',
   sku: '',
   description: '',
+  purchaseCost: '',
   price: '',
   unit: 'piece',
   coverage: '1',
   coverageUnit: 'sq.ft',
   wastagePercent: '0',
   quantityRule: 'PIECE',
+  packageQty: '1',
+  supplier: '',
+  stockQty: '0',
+  reorderThreshold: '5',
   imageUrl: '',
 }
 
@@ -207,12 +217,17 @@ export default function MaterialsView() {
         brand: editing.brand ?? '',
         sku: editing.sku ?? '',
         description: editing.description ?? '',
+        purchaseCost: editing.purchaseCost != null ? String(editing.purchaseCost) : '',
         price: String(editing.price ?? ''),
         unit: editing.unit || 'piece',
         coverage: String(editing.coverage ?? 1),
         coverageUnit: editing.coverageUnit || 'sq.ft',
         wastagePercent: String(editing.wastagePercent ?? 0),
         quantityRule: editing.quantityRule || 'PIECE',
+        packageQty: editing.packageQty != null ? String(editing.packageQty) : '1',
+        supplier: editing.supplier ?? '',
+        stockQty: editing.stockQty != null ? String(editing.stockQty) : '0',
+        reorderThreshold: editing.reorderThreshold != null ? String(editing.reorderThreshold) : '5',
         imageUrl: editing.imageUrl ?? '',
       })
     } else {
@@ -269,6 +284,10 @@ export default function MaterialsView() {
     if (!Number.isFinite(coverage) || coverage <= 0)
       return setFormError('Coverage area must be greater than 0.')
     const wastage = Math.min(100, Math.max(0, Number(form.wastagePercent) || 0))
+    const purchaseCost = Number(form.purchaseCost) || 0
+    const packageQty = Number(form.packageQty) || 1
+    const stockQty = Number(form.stockQty) || 0
+    const reorderThreshold = Number(form.reorderThreshold) || 5
 
     setSaving(true)
     setFormError(null)
@@ -288,12 +307,17 @@ export default function MaterialsView() {
         brand: form.brand.trim() || undefined,
         sku: form.sku.trim() || undefined,
         description: form.description.trim() || undefined,
+        purchaseCost,
         price,
         unit: form.unit,
         coverage,
         coverageUnit: form.coverageUnit,
         wastagePercent: wastage,
         quantityRule: form.quantityRule,
+        packageQty,
+        supplier: form.supplier.trim() || undefined,
+        stockQty,
+        reorderThreshold,
         imageUrl: form.imageUrl ? form.imageUrl.trim() : (editing ? null : undefined),
       }
       if (editing) {
@@ -504,10 +528,38 @@ export default function MaterialsView() {
                       {[m.brand, m.sku].filter(Boolean).join(' · ')}
                     </p>
                   )}
-                  <p className="mt-2">
-                    <span className="text-lg font-extrabold text-primary">{formatINR(m.price)}</span>
-                    <span className="text-xs font-medium text-muted-foreground"> / {m.unit}</span>
-                  </p>
+                  <div className="mt-2 flex items-baseline justify-between">
+                    <p>
+                      <span className="text-lg font-extrabold text-primary">{formatINR(m.price)}</span>
+                      <span className="text-xs font-medium text-muted-foreground"> / {m.unit}</span>
+                    </p>
+                    {m.stockQty != null && (
+                      <span
+                        className={cn(
+                          'rounded-md px-1.5 py-0.5 text-[10px] font-semibold',
+                          (m.stockQty ?? 0) <= 0
+                            ? 'bg-red-50 text-red-600'
+                            : (m.stockQty ?? 0) <= (m.reorderThreshold ?? 5)
+                            ? 'bg-amber-50 text-amber-600'
+                            : 'bg-emerald-50 text-emerald-700'
+                        )}
+                      >
+                        {(m.stockQty ?? 0) <= 0
+                          ? 'Out of Stock'
+                          : `${m.stockQty} ${m.unit} in stock`}
+                      </span>
+                    )}
+                  </div>
+                  {isSuperAdmin && m.purchaseCost != null && m.purchaseCost > 0 && (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      Cost: <strong>{formatINR(m.purchaseCost)}</strong>
+                      {m.price > m.purchaseCost && (
+                        <span className="ml-1 text-emerald-600">
+                          (+{Math.round(((m.price - m.purchaseCost) / m.price) * 100)}% margin)
+                        </span>
+                      )}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -520,6 +572,16 @@ export default function MaterialsView() {
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Percent className="size-3.5 shrink-0" />
                     {fmtNum(m.wastagePercent)}% wastage
+                  </p>
+                )}
+                {m.supplier && (
+                  <p className="truncate text-xs text-muted-foreground">
+                    Vendor: <strong className="text-foreground">{m.supplier}</strong>
+                  </p>
+                )}
+                {(m.packageQty ?? 1) > 1 && (
+                  <p className="text-xs text-muted-foreground">
+                    Pack: <strong className="text-foreground">{m.packageQty} {m.unit}/box</strong>
                   </p>
                 )}
                 <div>
@@ -686,7 +748,7 @@ export default function MaterialsView() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="mat-price">Price (₹) *</Label>
+              <Label htmlFor="mat-price">Selling Price (₹) *</Label>
               <Input
                 id="mat-price"
                 type="number"
@@ -701,7 +763,22 @@ export default function MaterialsView() {
             </div>
 
             <div className="space-y-2">
-              <Label>Price Unit *</Label>
+              <Label htmlFor="mat-purchase-cost">Unit Purchase Cost (₹)</Label>
+              <Input
+                id="mat-purchase-cost"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={form.purchaseCost}
+                onChange={(e) => set('purchaseCost', e.target.value)}
+                placeholder="Buy / COGS cost"
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Unit of Measurement *</Label>
               <Select value={form.unit} onValueChange={(v) => set('unit', v)}>
                 <SelectTrigger className="h-11">
                   <SelectValue placeholder="Select unit" />
@@ -714,6 +791,59 @@ export default function MaterialsView() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mat-supplier">Supplier / Vendor</Label>
+              <Input
+                id="mat-supplier"
+                value={form.supplier}
+                onChange={(e) => set('supplier', e.target.value)}
+                placeholder="e.g. Kajaria Depot"
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mat-package-qty">Units per Box / Package</Label>
+              <Input
+                id="mat-package-qty"
+                type="number"
+                min="1"
+                step="1"
+                value={form.packageQty}
+                onChange={(e) => set('packageQty', e.target.value)}
+                placeholder="1"
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mat-stock">Initial Stock Quantity</Label>
+              <Input
+                id="mat-stock"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.stockQty}
+                onChange={(e) => set('stockQty', e.target.value)}
+                placeholder="0"
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mat-reorder">Low Stock Alert Threshold</Label>
+              <Input
+                id="mat-reorder"
+                type="number"
+                min="0"
+                step="1"
+                value={form.reorderThreshold}
+                onChange={(e) => set('reorderThreshold', e.target.value)}
+                placeholder="5"
+                className="h-11"
+              />
             </div>
 
             <div className="space-y-2">

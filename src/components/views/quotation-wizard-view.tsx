@@ -94,6 +94,9 @@ interface BathroomDraft {
   openingsArea: string
 }
 
+// Per-bathroom fixture map: key = bathroomIndex (as string), value = array of {materialId, quantity}
+type BathroomFixtureMap = Record<string, { materialId: string; quantity: number }[]>
+
 interface DraftState {
   customerMode: 'lead' | 'new'
   leadId: string | null
@@ -109,9 +112,9 @@ interface DraftState {
   bathrooms: BathroomDraft[]
   packageId: string | null
   tiles: string[]
-  fixtures: { materialId: string; quantity: number }[]
+  // Per-bathroom fixtures: key = bathroom index ("0", "1", ...)
+  bathroomFixtures: BathroomFixtureMap
   addons: { materialId: string; quantity: number }[]
-  consultation: boolean
   discountType: 'FLAT' | 'PERCENT'
   discount: string
   notes: string
@@ -123,12 +126,15 @@ interface MaterialRow {
   id: string
   name: string
   brand: string | null
+  sku: string | null
   unit: string
   price: number
   coverage: number | null
+  coverageUnit: string | null
   wastagePercent: number | null
   imageUrl: string | null
   quantityRule: string
+  subCategory: string | null
   category: { id: string; name: string }
 }
 
@@ -195,9 +201,8 @@ const defaultDraft = (): DraftState => ({
   bathrooms: [emptyBathroom(1)],
   packageId: null,
   tiles: [],
-  fixtures: [],
+  bathroomFixtures: {},
   addons: [],
-  consultation: false,
   discountType: 'FLAT',
   discount: '',
   notes: '',
@@ -293,7 +298,21 @@ export default function QuotationWizardView() {
     for (const m of materials) map.set(m.id, m)
     return map
   }, [materials])
+  // Tile materials grouped by subCategory
   const tileMaterials = useMemo(() => materials.filter((m) => m.category?.name === 'Tiles'), [materials])
+  const tileGroups = useMemo(() => {
+    const groups = new Map<string, MaterialRow[]>()
+    for (const m of tileMaterials) {
+      const sub = m.subCategory?.trim() || 'General'
+      if (!groups.has(sub)) groups.set(sub, [])
+      groups.get(sub)!.push(m)
+    }
+    // If all tiles are in one sub-group only, don't split
+    if (groups.size <= 1) return [{ name: '', items: tileMaterials }]
+    return [...groups.entries()]
+      .map(([name, items]) => ({ name, items }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [tileMaterials])
   // Dynamic grouping: every catalogue category that isn't handled by a dedicated step
   // (Tiles / Add-ons) becomes a fixture group — resilient to category renames.
   const fixtureGroups = useMemo(() => {
@@ -451,13 +470,25 @@ export default function QuotationWizardView() {
         tiles: (v.items ?? [])
           .filter((i) => i.section === 'TILES' && i.materialId)
           .map((i) => i.materialId as string),
-        fixtures: (v.items ?? [])
-          .filter((i) => i.section === 'FIXTURES' && i.materialId)
-          .map((i) => ({ materialId: i.materialId as string, quantity: i.quantity })),
+        // Rebuild per-bathroom fixtures from saved items (best-effort: group by bathroomId)
+        bathroomFixtures: (() => {
+          const map: BathroomFixtureMap = {}
+          const fixtureItems = (v.items ?? []).filter((i) => i.section === 'FIXTURES' && i.materialId)
+          // If bathroomId present, use it; otherwise put all in bathroom 0
+          fixtureItems.forEach((item, idx) => {
+            const bKey = (item as unknown as { bathroomId?: string }).bathroomId ?? '0'
+            if (!map[bKey]) map[bKey] = []
+            map[bKey].push({ materialId: item.materialId as string, quantity: item.quantity })
+          })
+          // If the map is empty (no bathroomId), put all under index 0
+          if (Object.keys(map).length === 0 && fixtureItems.length > 0) {
+            map['0'] = fixtureItems.map((i) => ({ materialId: i.materialId as string, quantity: i.quantity }))
+          }
+          return map
+        })(),
         addons: (v.items ?? [])
           .filter((i) => i.section === 'ADDONS' && i.materialId)
           .map((i) => ({ materialId: i.materialId as string, quantity: i.quantity })),
-        consultation: (v.items ?? []).some((i) => i.section === 'OTHER' && i.name === 'Design Consultation'),
         discountType: v.discountType === 'PERCENT' ? 'PERCENT' : 'FLAT',
         discount: v.discount ? String(v.discount) : '',
         notes: v.notes ?? '',
@@ -547,16 +578,23 @@ export default function QuotationWizardView() {
         amount: round2(quantity * m.price),
       })
     }
-    for (const f of draft.fixtures) {
-      const m = materialsById.get(f.materialId)
-      if (!m || f.quantity < 1) continue
+    // Aggregate fixtures across all bathrooms (for summary/cost step)
+    const allFixturesAgg = new Map<string, number>()
+    for (const bfArr of Object.values(draft.bathroomFixtures)) {
+      for (const f of bfArr) {
+        allFixturesAgg.set(f.materialId, (allFixturesAgg.get(f.materialId) ?? 0) + f.quantity)
+      }
+    }
+    for (const [mid, qty] of allFixturesAgg) {
+      const m = materialsById.get(mid)
+      if (!m || qty < 1) continue
       items.push({
         section: 'FIXTURES',
         name: m.name,
-        quantity: f.quantity,
+        quantity: qty,
         unit: m.unit,
         rate: m.price,
-        amount: round2(f.quantity * m.price),
+        amount: round2(qty * m.price),
       })
     }
     for (const a of draft.addons) {
@@ -569,16 +607,6 @@ export default function QuotationWizardView() {
         unit: m.unit,
         rate: m.price,
         amount: round2(a.quantity * m.price),
-      })
-    }
-    if (draft.consultation) {
-      items.push({
-        section: 'OTHER',
-        name: 'Design Consultation',
-        quantity: 1,
-        unit: 'set',
-        rate: consultationFee,
-        amount: round2(consultationFee),
       })
     }
 
@@ -605,18 +633,19 @@ export default function QuotationWizardView() {
       }
 
       const bFixtures: BathroomItemInput[] = []
-      for (const f of draft.fixtures) {
+      // Use per-bathroom fixture selections
+      const bfArr = draft.bathroomFixtures[String(bathroomsNum.indexOf(b))] ?? []
+      for (const f of bfArr) {
         const m = materialsById.get(f.materialId)
         if (!m || f.quantity < 1) continue
-        const share = Math.max(1, Math.round(f.quantity / Math.max(1, bathroomsNum.length)))
         bFixtures.push({
           name: m.name,
           section: 'FIXTURES',
           materialId: m.id,
-          quantity: share,
+          quantity: f.quantity,
           unit: m.unit,
           rate: m.price,
-          amount: round2(share * m.price),
+          amount: round2(f.quantity * m.price),
         })
       }
 
@@ -806,9 +835,12 @@ export default function QuotationWizardView() {
       packageId: draft.packageId as string,
       selections: {
         tileIds: draft.tiles.map((id) => ({ materialId: id })),
-        fixtures: draft.fixtures.filter((f) => f.quantity >= 1),
+        // Flatten per-bathroom fixtures for server storage
+        fixtures: Object.entries(draft.bathroomFixtures).flatMap(([bIdx, arr]) =>
+          arr.filter((f) => f.quantity >= 1).map((f) => ({ ...f, bathroomIndex: Number(bIdx) }))
+        ),
+        bathroomFixtures: draft.bathroomFixtures,
         addons: draft.addons.filter((a) => a.quantity >= 1),
-        consultation: draft.consultation,
       },
       discountType: draft.discountType,
       discount: Number(draft.discount) || 0,
@@ -932,7 +964,7 @@ export default function QuotationWizardView() {
             <PackageStep draft={draft} mutate={mutate} packages={packages} loading={packagesLoading} />
           ) : null}
           {STEPS[step].id === 'tiles' ? (
-            <TilesStep draft={draft} mutate={mutate} materials={tileMaterials} loading={materialsLoading} />
+            <TilesStep draft={draft} mutate={mutate} tileGroups={tileGroups} loading={materialsLoading} />
           ) : null}
           {STEPS[step].id === 'fixtures' ? (
             <FixturesStep draft={draft} mutate={mutate} groups={fixtureGroups} loading={materialsLoading} />
@@ -943,7 +975,6 @@ export default function QuotationWizardView() {
               mutate={mutate}
               materials={addonMaterials}
               loading={materialsLoading}
-              consultationFee={consultationFee}
             />
           ) : null}
           {STEPS[step].id === 'cost' ? (
@@ -1884,74 +1915,160 @@ function PackageStep({
 function TilesStep({
   draft,
   mutate,
-  materials,
+  tileGroups,
   loading,
 }: {
   draft: DraftState
   mutate: Mutate
-  materials: MaterialRow[]
+  tileGroups: { name: string; items: MaterialRow[] }[]
   loading: boolean
 }) {
+  const [search, setSearch] = useState('')
+  const [subFilter, setSubFilter] = useState<string>('ALL')
+
   const toggle = (id: string) =>
     mutate((prev) => ({
       ...prev,
       tiles: prev.tiles.includes(id) ? prev.tiles.filter((t) => t !== id) : [...prev.tiles, id],
     }))
 
+  const subCategories = useMemo(() => {
+    const names = tileGroups.map((g) => g.name).filter(Boolean)
+    return names.length > 1 ? ['ALL', ...names] : ['ALL']
+  }, [tileGroups])
+
+  const filteredGroups = useMemo(() => {
+    return tileGroups
+      .filter((g) => subFilter === 'ALL' || g.name === subFilter)
+      .map((g) => ({
+        ...g,
+        items: g.items.filter((m) => {
+          if (!search.trim()) return true
+          const q = search.toLowerCase()
+          return (
+            m.name.toLowerCase().includes(q) ||
+            (m.brand ?? '').toLowerCase().includes(q) ||
+            (m.subCategory ?? '').toLowerCase().includes(q)
+          )
+        }),
+      }))
+      .filter((g) => g.items.length > 0)
+  }, [tileGroups, search, subFilter])
+
+  const allMaterials = tileGroups.flatMap((g) => g.items)
+
   return (
     <div className="space-y-4">
       <StepIntro
-        title="Select Tiles"
-        desc="Tiles are applied to the total bathroom area — quantities are computed automatically (coverage + wastage)."
+        title="Tiles Catalogue"
+        desc="Select floor tiles, wall tiles, or combined tiles. Quantities are computed automatically from coverage + wastage."
       />
       {loading ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => (
+          {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-28 rounded-2xl" />
           ))}
         </div>
-      ) : materials.length === 0 ? (
-        <EmptyBlock text="No active tiles in the catalogue yet." />
+      ) : allMaterials.length === 0 ? (
+        <EmptyBlock text="No active tiles in the catalogue yet. Add tiles via the Materials section." />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {materials.map((m) => {
-            const selected = draft.tiles.includes(m.id)
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => toggle(m.id)}
-                className={cn(
-                  'relative flex items-center gap-3 rounded-2xl border p-3 text-left shadow-sm transition-all active:scale-[0.99]',
-                  selected
-                    ? 'border-primary bg-orange-50/50 ring-2 ring-primary/20'
-                    : 'border-border bg-card hover:border-primary/40'
-                )}
-              >
-                <MaterialImage material={m} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-foreground">{m.name}</span>
-                  {m.brand ? (
-                    <span className="block truncate text-xs text-muted-foreground">{m.brand}</span>
-                  ) : null}
-                  <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                    {m.unit}
-                  </span>
-                </span>
-                {selected ? (
-                  <span className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full bg-primary text-white">
-                    <Check className="size-3.5" />
-                  </span>
+        <>
+          {/* Search + Sub-category filter */}
+          <div className="flex flex-wrap gap-2">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search tiles by name or brand…"
+                className="min-h-10 pl-9"
+              />
+            </div>
+            {subCategories.length > 1 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {subCategories.map((sc) => (
+                  <button
+                    key={sc}
+                    type="button"
+                    onClick={() => setSubFilter(sc)}
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                      subFilter === sc
+                        ? 'border-primary bg-primary text-white'
+                        : 'border-border bg-card text-muted-foreground hover:border-primary/50'
+                    )}
+                  >
+                    {sc === 'ALL' ? 'All Types' : sc}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          {filteredGroups.length === 0 ? (
+            <EmptyBlock text="No tiles match your search." />
+          ) : (
+            filteredGroups.map((group) => (
+              <div key={group.name || 'tiles'} className="space-y-2">
+                {group.name ? (
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    {group.name}
+                  </h3>
                 ) : null}
-              </button>
-            )
-          })}
-        </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {group.items.map((m) => {
+                    const selected = draft.tiles.includes(m.id)
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => toggle(m.id)}
+                        className={cn(
+                          'relative flex items-center gap-3 rounded-2xl border p-3 text-left shadow-sm transition-all active:scale-[0.99]',
+                          selected
+                            ? 'border-primary bg-orange-50/50 ring-2 ring-primary/20'
+                            : 'border-border bg-card hover:border-primary/40'
+                        )}
+                      >
+                        <MaterialImage material={m} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-foreground">{m.name}</span>
+                          {m.brand ? (
+                            <span className="block truncate text-xs text-muted-foreground">{m.brand}</span>
+                          ) : null}
+                          <span className="mt-1 flex flex-wrap items-center gap-1">
+                            <span className="inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                              {m.unit}
+                            </span>
+                            {m.price > 0 ? (
+                              <span className="inline-block rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-primary">
+                                {formatINR(m.price)}
+                              </span>
+                            ) : null}
+                            {m.coverage && m.coverage > 0 ? (
+                              <span className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
+                                {m.coverage} {m.coverageUnit ?? 'sq.ft'}/unit
+                              </span>
+                            ) : null}
+                          </span>
+                        </span>
+                        {selected ? (
+                          <span className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full bg-primary text-white">
+                            <Check className="size-3.5" />
+                          </span>
+                        ) : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </>
       )}
       {draft.tiles.length > 0 ? (
         <p className="text-xs text-muted-foreground">
-          {draft.tiles.length} tile option{draft.tiles.length === 1 ? '' : 's'} selected — quantities are shown in
-          the Cost step.
+          {draft.tiles.length} tile option{draft.tiles.length === 1 ? '' : 's'} selected — quantities are computed from bathroom areas in the Cost step.
         </p>
       ) : null}
     </div>
@@ -1959,7 +2076,7 @@ function TilesStep({
 }
 
 // ---------------------------------------------------------------------------
-// Step: Fixtures
+// Step: Fixtures — per-bathroom selection
 // ---------------------------------------------------------------------------
 
 function FixturesStep({
@@ -1973,20 +2090,35 @@ function FixturesStep({
   groups: { name: string; items: MaterialRow[] }[]
   loading: boolean
 }) {
-  const qtyOf = (id: string) => draft.fixtures.find((f) => f.materialId === id)?.quantity ?? 0
+  const [activeBath, setActiveBath] = useState(0)
+  const bathCount = draft.bathrooms.length
 
-  const setQty = (id: string, qty: number) =>
+  const qtyOf = (bathroomIdx: number, id: string) =>
+    (draft.bathroomFixtures[String(bathroomIdx)] ?? []).find((f) => f.materialId === id)?.quantity ?? 0
+
+  const setQty = (bathroomIdx: number, id: string, qty: number) =>
     mutate((prev) => {
+      const key = String(bathroomIdx)
       const clamped = Math.min(MAX_QTY, Math.max(0, Math.round(qty)))
-      const rest = prev.fixtures.filter((f) => f.materialId !== id)
-      return clamped >= 1 ? { ...prev, fixtures: [...rest, { materialId: id, quantity: clamped }] } : { ...prev, fixtures: rest }
+      const rest = (prev.bathroomFixtures[key] ?? []).filter((f) => f.materialId !== id)
+      const newArr = clamped >= 1 ? [...rest, { materialId: id, quantity: clamped }] : rest
+      return {
+        ...prev,
+        bathroomFixtures: { ...prev.bathroomFixtures, [key]: newArr },
+      }
     })
+
+  // Total fixtures count across all bathrooms
+  const totalFixtureCount = Object.values(draft.bathroomFixtures).reduce(
+    (sum, arr) => sum + arr.filter((f) => f.quantity >= 1).length,
+    0
+  )
 
   return (
     <div className="space-y-5">
       <StepIntro
-        title="Select Fixtures & Fittings"
-        desc="Choose the fixtures for this quote and set quantities (1–99)."
+        title="Select Fixtures & Fittings — Per Bathroom"
+        desc="Choose fixtures for each bathroom separately. Switch between bathroom tabs to set quantities independently."
       />
       {loading ? (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1997,23 +2129,77 @@ function FixturesStep({
       ) : groups.length === 0 ? (
         <EmptyBlock text="No active fixtures in the catalogue yet." />
       ) : (
-        groups.map((group) => (
-          <div key={group.name} className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{group.name}</h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {group.items.map((m) => (
-                <FixtureCard
-                  key={m.id}
-                  material={m}
-                  quantity={qtyOf(m.id)}
-                  onAdd={() => setQty(m.id, 1)}
-                  onInc={() => setQty(m.id, qtyOf(m.id) + 1)}
-                  onDec={() => setQty(m.id, qtyOf(m.id) - 1)}
-                />
-              ))}
+        <>
+          {/* Bathroom tabs */}
+          {bathCount > 1 ? (
+            <div className="-mx-1 flex flex-wrap gap-1.5 overflow-x-auto px-1 pb-1">
+              {draft.bathrooms.map((b, idx) => {
+                const count = (draft.bathroomFixtures[String(idx)] ?? []).filter((f) => f.quantity >= 1).length
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setActiveBath(idx)}
+                    className={cn(
+                      'flex min-h-10 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap',
+                      activeBath === idx
+                        ? 'border-primary bg-orange-50 text-primary ring-2 ring-primary/20'
+                        : 'border-border bg-card text-muted-foreground hover:border-primary/40'
+                    )}
+                  >
+                    <span className={cn(
+                      'flex size-5 items-center justify-center rounded-full text-[10px] font-bold',
+                      activeBath === idx ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'
+                    )}>
+                      {idx + 1}
+                    </span>
+                    {b.name || `Bathroom ${idx + 1}`}
+                    {count > 0 ? (
+                      <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                        {count}
+                      </span>
+                    ) : null}
+                  </button>
+                )
+              })}
             </div>
+          ) : null}
+
+          {/* Active bathroom label */}
+          <div className="rounded-xl border border-primary/20 bg-orange-50/40 px-4 py-2.5">
+            <p className="text-xs font-bold text-primary">
+              Selecting fixtures for: {draft.bathrooms[activeBath]?.name || `Bathroom ${activeBath + 1}`}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              These will be added specifically to this bathroom in the quotation.
+            </p>
           </div>
-        ))
+
+          {/* Fixture groups */}
+          {groups.map((group) => (
+            <div key={group.name} className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{group.name}</h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {group.items.map((m) => (
+                  <FixtureCard
+                    key={m.id}
+                    material={m}
+                    quantity={qtyOf(activeBath, m.id)}
+                    onAdd={() => setQty(activeBath, m.id, 1)}
+                    onInc={() => setQty(activeBath, m.id, qtyOf(activeBath, m.id) + 1)}
+                    onDec={() => setQty(activeBath, m.id, qtyOf(activeBath, m.id) - 1)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {totalFixtureCount > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {totalFixtureCount} fixture item{totalFixtureCount === 1 ? '' : 's'} selected across {bathCount} bathroom{bathCount === 1 ? '' : 's'}.
+            </p>
+          ) : null}
+        </>
       )}
     </div>
   )
@@ -2090,13 +2276,11 @@ function AddonsStep({
   mutate,
   materials,
   loading,
-  consultationFee,
 }: {
   draft: DraftState
   mutate: Mutate
   materials: MaterialRow[]
   loading: boolean
-  consultationFee: number
 }) {
   const qtyOf = (id: string) => draft.addons.find((a) => a.materialId === id)?.quantity ?? 0
 
@@ -2116,6 +2300,8 @@ function AddonsStep({
             <Skeleton key={i} className="h-28 rounded-2xl" />
           ))}
         </div>
+      ) : materials.length === 0 ? (
+        <EmptyBlock text="No active add-ons in the catalogue yet." />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {materials.map((m) => {
@@ -2170,40 +2356,14 @@ function AddonsStep({
               </div>
             )
           })}
-          {materials.length === 0 ? (
-            <div className="sm:col-span-2">
-              <EmptyBlock text="No active add-ons in the catalogue yet." />
-            </div>
-          ) : null}
         </div>
       )}
-
-      {/* Consultation toggle */}
-      <div
-        className={cn(
-          'flex items-center gap-3 rounded-2xl border p-4 shadow-sm transition-colors',
-          draft.consultation ? 'border-primary/60 bg-orange-50/40' : 'border-border bg-card'
-        )}
-      >
-        <Checkbox
-          id="consultation"
-          checked={draft.consultation}
-          onCheckedChange={(v) => mutate({ consultation: v === true })}
-          className="size-5 shrink-0"
-        />
-        <div className="min-w-0 flex-1">
-          <Label htmlFor="consultation" className="cursor-pointer text-sm font-semibold text-foreground">
-            Design Consultation
-          </Label>
-          <p className="text-xs text-muted-foreground">
-            Professional on-site design guidance — billed once under Other Services.
-          </p>
-        </div>
-        <span className="shrink-0 text-sm font-extrabold text-primary">{formatINR(consultationFee)}</span>
-      </div>
     </div>
   )
 }
+
+
+
 
 // ---------------------------------------------------------------------------
 // Step: Cost

@@ -16,6 +16,8 @@ import QuotationDetailView from '@/components/views/quotation-detail-view'
 import OrdersView from '@/components/views/orders-view'
 import AppointmentsView from '@/components/views/appointments-view'
 import MaterialsView from '@/components/views/materials-view'
+import BundlesView from '@/components/views/bundles-view'
+import InventoryView from '@/components/views/inventory-view'
 import PackagesView from '@/components/views/packages-view'
 import ReportsView from '@/components/views/reports-view'
 import AdminManagementView from '@/components/views/admin-management-view'
@@ -48,6 +50,10 @@ function ViewRenderer() {
       return <AppointmentsView />
     case 'materials':
       return <MaterialsView />
+    case 'bundles':
+      return <BundlesView />
+    case 'inventory':
+      return <InventoryView />
     case 'packages':
       return <PackagesView />
     case 'reports':

@@ -56,3 +56,5 @@ server.log
 # user uploads
 /public/uploads/*
 !/public/uploads/.gitkeep
+
+*.zip

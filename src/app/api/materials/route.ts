@@ -51,13 +51,17 @@ interface MaterialCreateBody {
   brand?: string
   sku?: string
   description?: string
+  purchaseCost?: number | string
   price?: number | string
   unit?: string
   coverage?: number | string
   coverageUnit?: string
   wastagePercent?: number | string
   quantityRule?: string
+  packageQty?: number | string
+  supplier?: string
   imageUrl?: string
+  reorderThreshold?: number | string
 }
 
 /** POST /api/materials — SUPER_ADMIN only. */
@@ -75,7 +79,7 @@ export async function POST(req: NextRequest) {
     if (!name) throw new ApiError(400, 'Name is required')
     if (!body.categoryId) throw new ApiError(400, 'categoryId is required')
     const price = Number(body.price)
-    if (!Number.isFinite(price) || price < 0) throw new ApiError(400, 'A valid price is required')
+    if (!Number.isFinite(price) || price < 0) throw new ApiError(400, 'A valid selling price is required')
 
     const category = await db.materialCategory.findUnique({ where: { id: body.categoryId } })
     if (!category) throw new ApiError(400, 'Invalid categoryId')
@@ -84,6 +88,9 @@ export async function POST(req: NextRequest) {
       body.quantityRule && QUANTITY_RULES.includes(body.quantityRule) ? body.quantityRule : 'PIECE'
     const coverage = Number(body.coverage)
     const wastagePercent = Number(body.wastagePercent)
+    const purchaseCost = Number(body.purchaseCost)
+    const packageQty = Number(body.packageQty)
+    const reorderThreshold = body.reorderThreshold !== undefined ? Number(body.reorderThreshold) : null
 
     const material = await db.material.create({
       data: {
@@ -93,13 +100,17 @@ export async function POST(req: NextRequest) {
         brand: body.brand?.trim() || null,
         sku: body.sku?.trim() || null,
         description: body.description?.trim() || null,
+        purchaseCost: Number.isFinite(purchaseCost) && purchaseCost >= 0 ? purchaseCost : 0,
         price,
         unit: body.unit?.trim() || 'piece',
         coverage: Number.isFinite(coverage) ? coverage : 1,
         coverageUnit: body.coverageUnit?.trim() || 'sq.ft',
         wastagePercent: Number.isFinite(wastagePercent) ? wastagePercent : 0,
         quantityRule,
+        packageQty: Number.isFinite(packageQty) && packageQty > 0 ? packageQty : 1,
+        supplier: body.supplier?.trim() || null,
         imageUrl: body.imageUrl?.trim() || null,
+        reorderThreshold: reorderThreshold !== null && Number.isFinite(reorderThreshold) ? reorderThreshold : null,
         createdById: user.id,
       },
       include: { category: { select: { id: true, name: true } } },
