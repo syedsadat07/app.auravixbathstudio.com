@@ -14,6 +14,15 @@ import { toast } from 'sonner'
 import {
   ArrowLeft,
   Check,
+  Boxes,
+  Layers,
+  Sparkles,
+  CheckCircle2,
+  AlertTriangle,
+  PackageCheck,
+  SlidersHorizontal,
+  RotateCcw,
+  ChevronDown,
   ChevronRight,
   ChevronUp,
   Clock,
@@ -94,6 +103,40 @@ interface BathroomDraft {
   openingsArea: string
 }
 
+
+interface BrandBundleItem {
+  id?: string
+  materialId: string
+  quantity: number
+  unit: string
+  rate: number
+  installCost: number
+  sortOrder?: number
+  notes?: string | null
+  material?: {
+    id: string
+    name: string
+    brand: string | null
+    sku?: string | null
+    unit: string
+    price: number
+    imageUrl: string | null
+    category?: { id: string; name: string }
+    stockQty?: number
+    reservedQty?: number
+    availableQty?: number
+  }
+}
+
+interface BrandBundle {
+  id: string
+  name: string
+  bundleType: 'BASIC' | 'PREMIUM' | 'LUXURY' | 'CUSTOM'
+  description: string | null
+  status: 'ACTIVE' | 'INACTIVE'
+  items: BrandBundleItem[]
+}
+
 // Per-bathroom fixture map: key = bathroomIndex (as string), value = array of {materialId, quantity}
 type BathroomFixtureMap = Record<string, { materialId: string; quantity: number }[]>
 
@@ -111,6 +154,9 @@ interface DraftState {
   pincode: string
   bathrooms: BathroomDraft[]
   packageId: string | null
+  bundleId: string | null
+  bundleName: string | null
+  bathroomBundles: Record<string, { bundleId: string; bundleName: string }>
   tiles: string[]
   // Per-bathroom fixtures: key = bathroom index ("0", "1", ...)
   bathroomFixtures: BathroomFixtureMap
@@ -127,6 +173,7 @@ interface MaterialRow {
   name: string
   brand: string | null
   sku: string | null
+  description?: string | null
   unit: string
   price: number
   coverage: number | null
@@ -136,6 +183,15 @@ interface MaterialRow {
   quantityRule: string
   subCategory: string | null
   category: { id: string; name: string }
+  purchaseCost?: number
+  stockQty?: number
+  reservedQty?: number
+  availableQty?: number
+  reorderThreshold?: number | null
+  supplier?: string | null
+  packageQty?: number
+  isLowStock?: boolean
+  isOutOfStock?: boolean
 }
 
 interface PackageRow {
@@ -200,6 +256,9 @@ const defaultDraft = (): DraftState => ({
   pincode: '',
   bathrooms: [emptyBathroom(1)],
   packageId: null,
+  bundleId: null,
+  bundleName: null,
+  bathroomBundles: {},
   tiles: [],
   bathroomFixtures: {},
   addons: [],
@@ -243,6 +302,8 @@ export default function QuotationWizardView() {
 
   // ----- master data -----
   const { data: packagesData, loading: packagesLoading } = useApi<{ packages: PackageRow[] }>('/api/packages')
+  const { data: bundlesData, loading: bundlesLoading } = useApi<{ bundles: BrandBundle[] }>('/api/bundles?status=ACTIVE')
+  const bundles = bundlesData?.bundles ?? []
   const { data: materialsData, loading: materialsLoading } = useApi<{ materials: MaterialRow[] }>(
     '/api/materials?status=ACTIVE'
   )
@@ -833,6 +894,8 @@ export default function QuotationWizardView() {
         ...(toNum(b.openingsArea) > 0 ? { openingsArea: toNum(b.openingsArea) } : {}),
       })),
       packageId: draft.packageId as string,
+      bundleId: draft.bundleId || null,
+      bundleName: draft.bundleName || null,
       selections: {
         tileIds: draft.tiles.map((id) => ({ materialId: id })),
         // Flatten per-bathroom fixtures for server storage
@@ -967,7 +1030,7 @@ export default function QuotationWizardView() {
             <TilesStep draft={draft} mutate={mutate} tileGroups={tileGroups} loading={materialsLoading} />
           ) : null}
           {STEPS[step].id === 'fixtures' ? (
-            <FixturesStep draft={draft} mutate={mutate} groups={fixtureGroups} loading={materialsLoading} />
+            <FixturesStep draft={draft} mutate={mutate} groups={fixtureGroups} materials={materials} bundles={bundles} loading={materialsLoading || bundlesLoading} />
           ) : null}
           {STEPS[step].id === 'addons' ? (
             <AddonsStep
@@ -2076,22 +2139,39 @@ function TilesStep({
 }
 
 // ---------------------------------------------------------------------------
-// Step: Fixtures — per-bathroom selection
+// Step: Fixtures — per-bathroom selection & Brand Bundles
 // ---------------------------------------------------------------------------
 
 function FixturesStep({
   draft,
   mutate,
   groups,
+  materials,
+  bundles,
   loading,
 }: {
   draft: DraftState
   mutate: Mutate
   groups: { name: string; items: MaterialRow[] }[]
+  materials: MaterialRow[]
+  bundles: BrandBundle[]
   loading: boolean
 }) {
   const [activeBath, setActiveBath] = useState(0)
+  const [bundleFilter, setBundleFilter] = useState<'ALL' | 'BASIC' | 'PREMIUM' | 'LUXURY' | 'CUSTOM'>('ALL')
+  const [brandFilter, setBrandFilter] = useState<string>('ALL')
+  const [categoryFilter, setCategoryFilter] = useState<string>('ALL')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [expandedBundleId, setExpandedBundleId] = useState<string | null>(null)
+  const [expandedBrands, setExpandedBrands] = useState<Set<string>>(new Set())
+  const [addBrandOpen, setAddBrandOpen] = useState(false)
+  const [newBrandName, setNewBrandName] = useState('')
+  const [extraBrands, setExtraBrands] = useState<string[]>([])
   const bathCount = draft.bathrooms.length
+
+  const activeBathName = draft.bathrooms[activeBath]?.name || `Bathroom ${activeBath + 1}`
+  const activeBathKey = String(activeBath)
+  const activeBathBundle = draft.bathroomBundles?.[activeBathKey]
 
   const qtyOf = (bathroomIdx: number, id: string) =>
     (draft.bathroomFixtures[String(bathroomIdx)] ?? []).find((f) => f.materialId === id)?.quantity ?? 0
@@ -2108,55 +2188,234 @@ function FixturesStep({
       }
     })
 
+  // Apply bundle to active bathroom
+  const applyBundleToBathroom = (bundle: BrandBundle, targetBathIdx?: number) => {
+    const targetIdx = targetBathIdx ?? activeBath
+    const targetKey = String(targetIdx)
+    const targetName = draft.bathrooms[targetIdx]?.name || `Bathroom ${targetIdx + 1}`
+
+    // Convert bundle items to fixture selections
+    const newFixtures: { materialId: string; quantity: number }[] = bundle.items.map((it) => ({
+      materialId: it.materialId,
+      quantity: Math.max(1, Math.round(it.quantity)),
+    }))
+
+    mutate((prev) => {
+      return {
+        ...prev,
+        bundleId: bundle.id,
+        bundleName: bundle.name,
+        bathroomBundles: {
+          ...prev.bathroomBundles,
+          [targetKey]: { bundleId: bundle.id, bundleName: bundle.name },
+        },
+        bathroomFixtures: {
+          ...prev.bathroomFixtures,
+          [targetKey]: newFixtures,
+        },
+      }
+    })
+
+    toast.success(`Applied "${bundle.name}" to ${targetName} (${newFixtures.length} items)`)
+  }
+
+  // Apply bundle to ALL bathrooms
+  const applyBundleToAllBathrooms = (bundle: BrandBundle) => {
+    const newBf: BathroomFixtureMap = {}
+    const newBb: Record<string, { bundleId: string; bundleName: string }> = {}
+
+    const newFixtures = bundle.items.map((it) => ({
+      materialId: it.materialId,
+      quantity: Math.max(1, Math.round(it.quantity)),
+    }))
+
+    draft.bathrooms.forEach((_, idx) => {
+      newBf[String(idx)] = [...newFixtures]
+      newBb[String(idx)] = { bundleId: bundle.id, bundleName: bundle.name }
+    })
+
+    mutate((prev) => ({
+      ...prev,
+      bundleId: bundle.id,
+      bundleName: bundle.name,
+      bathroomBundles: newBb,
+      bathroomFixtures: newBf,
+    }))
+
+    toast.success(`Applied "${bundle.name}" to all ${bathCount} bathrooms`)
+  }
+
+  // Clear / remove bundle from bathroom
+  const removeBundleFromBathroom = (targetBathIdx?: number) => {
+    const targetIdx = targetBathIdx ?? activeBath
+    const targetKey = String(targetIdx)
+    const targetName = draft.bathrooms[targetIdx]?.name || `Bathroom ${targetIdx + 1}`
+
+    mutate((prev) => {
+      const nextBb = { ...(prev.bathroomBundles || {}) }
+      delete nextBb[targetKey]
+      return {
+        ...prev,
+        bathroomBundles: nextBb,
+        bathroomFixtures: {
+          ...prev.bathroomFixtures,
+          [targetKey]: [],
+        },
+      }
+    })
+    toast.info(`Cleared fixtures & bundle for ${targetName}`)
+  }
+
+  // Filter bundles
+  const filteredBundles = useMemo(() => {
+    if (bundleFilter === 'ALL') return bundles
+    return bundles.filter((b) => b.bundleType === bundleFilter)
+  }, [bundles, bundleFilter])
+
+  // All fixture materials list (excluding tiles & addons)
+  const allFixtureMaterials = useMemo(() => {
+    return materials.filter((m) => {
+      const cat = m.category?.name
+      return cat && !NON_FIXTURE_CATEGORIES.has(cat)
+    })
+  }, [materials])
+
+  // Unique brands across all fixture materials + any user-added brands
+  const availableBrands = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of allFixtureMaterials) {
+      if (m.brand) set.add(m.brand)
+    }
+    for (const b of extraBrands) set.add(b)
+    return Array.from(set).sort()
+  }, [allFixtureMaterials, extraBrands])
+
+  // Filtered fixture materials based on search, brand and category
+  const filteredMaterials = useMemo(() => {
+    let list = allFixtureMaterials
+    if (brandFilter !== 'ALL') {
+      list = list.filter((m) => m.brand === brandFilter)
+    }
+    if (categoryFilter !== 'ALL') {
+      list = list.filter((m) => m.category?.name === categoryFilter)
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      list = list.filter(
+        (m) =>
+          m.name.toLowerCase().includes(q) ||
+          (m.brand && m.brand.toLowerCase().includes(q)) ||
+          (m.sku && m.sku.toLowerCase().includes(q)) ||
+          (m.subCategory && m.subCategory.toLowerCase().includes(q))
+      )
+    }
+    return list
+  }, [allFixtureMaterials, brandFilter, categoryFilter, searchQuery])
+
+  // Group filtered materials by brand → then by category inside each brand
+  const brandGroups = useMemo(() => {
+    // Build brand → category → items map
+    const brandMap = new Map<string, Map<string, MaterialRow[]>>()
+    for (const m of filteredMaterials) {
+      const brand = m.brand || 'Other'
+      const cat = m.category?.name || 'General'
+      if (!brandMap.has(brand)) brandMap.set(brand, new Map())
+      const catMap = brandMap.get(brand)!
+      const list = catMap.get(cat) ?? []
+      list.push(m)
+      catMap.set(cat, list)
+    }
+    return Array.from(brandMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([brand, catMap]) => ({
+        brand,
+        totalItems: filteredMaterials.filter((m) => (m.brand || 'Other') === brand).length,
+        categories: Array.from(catMap.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([catName, items]) => ({ catName, items })),
+      }))
+  }, [filteredMaterials])
+
+  // Available categories: always all categories from ALL fixture materials (not filtered by brand/search)
+  const availableCategories = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of allFixtureMaterials) {
+      if (m.category?.name) set.add(m.category.name)
+    }
+    return Array.from(set).sort()
+  }, [allFixtureMaterials])
+
+  // Current bathroom fixtures count and subtotal
+  const currentBathFixtures = draft.bathroomFixtures[activeBathKey] ?? []
+  const activeBathItemCount = currentBathFixtures.filter((f) => f.quantity >= 1).length
+  const activeBathSubtotal = currentBathFixtures.reduce((sum, f) => {
+    const m = materials.find((mat) => mat.id === f.materialId)
+    return sum + (m?.price ?? 0) * f.quantity
+  }, 0)
+
   // Total fixtures count across all bathrooms
   const totalFixtureCount = Object.values(draft.bathroomFixtures).reduce(
     (sum, arr) => sum + arr.filter((f) => f.quantity >= 1).length,
     0
   )
 
+  const BUNDLE_TYPE_META: Record<string, { label: string; badge: string }> = {
+    BASIC: { label: 'Basic Package', badge: 'bg-blue-50 text-blue-700 border-blue-200' },
+    PREMIUM: { label: 'Premium Package', badge: 'bg-purple-50 text-purple-700 border-purple-200' },
+    LUXURY: { label: 'Luxury Package', badge: 'bg-amber-50 text-amber-700 border-amber-200' },
+    CUSTOM: { label: 'Custom Brand Combo', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  }
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <StepIntro
-        title="Select Fixtures & Fittings — Per Bathroom"
-        desc="Choose fixtures for each bathroom separately. Switch between bathroom tabs to set quantities independently."
+        title="Select Fixtures, Materials & Brand Bundles"
+        desc="Choose pre-curated brand bundles or customize fixtures for each bathroom. Real-time stock levels and permanent quote snapshots ensure pricing & inventory integrity."
       />
+
       {loading ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-28 rounded-2xl" />
           ))}
         </div>
-      ) : groups.length === 0 ? (
-        <EmptyBlock text="No active fixtures in the catalogue yet." />
       ) : (
         <>
-          {/* Bathroom tabs */}
+          {/* Bathroom Navigation Tabs */}
           {bathCount > 1 ? (
-            <div className="-mx-1 flex flex-wrap gap-1.5 overflow-x-auto px-1 pb-1">
+            <div className="-mx-1 flex flex-wrap gap-2 overflow-x-auto px-1 pb-1">
               {draft.bathrooms.map((b, idx) => {
                 const count = (draft.bathroomFixtures[String(idx)] ?? []).filter((f) => f.quantity >= 1).length
+                const bundle = draft.bathroomBundles?.[String(idx)]
                 return (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => setActiveBath(idx)}
                     className={cn(
-                      'flex min-h-10 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap',
+                      'flex min-h-11 items-center gap-2 rounded-2xl border px-3.5 py-1.5 text-xs font-semibold transition-all whitespace-nowrap',
                       activeBath === idx
-                        ? 'border-primary bg-orange-50 text-primary ring-2 ring-primary/20'
+                        ? 'border-primary bg-orange-50 text-primary ring-2 ring-primary/20 shadow-sm'
                         : 'border-border bg-card text-muted-foreground hover:border-primary/40'
                     )}
                   >
-                    <span className={cn(
-                      'flex size-5 items-center justify-center rounded-full text-[10px] font-bold',
-                      activeBath === idx ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'
-                    )}>
+                    <span
+                      className={cn(
+                        'flex size-5 items-center justify-center rounded-full text-[10px] font-bold',
+                        activeBath === idx ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'
+                      )}
+                    >
                       {idx + 1}
                     </span>
-                    {b.name || `Bathroom ${idx + 1}`}
+                    <span>{b.name || `Bathroom ${idx + 1}`}</span>
+                    {bundle ? (
+                      <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                        Bundle
+                      </span>
+                    ) : null}
                     {count > 0 ? (
                       <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
-                        {count}
+                        {count} items
                       </span>
                     ) : null}
                   </button>
@@ -2165,39 +2424,552 @@ function FixturesStep({
             </div>
           ) : null}
 
-          {/* Active bathroom label */}
-          <div className="rounded-xl border border-primary/20 bg-orange-50/40 px-4 py-2.5">
-            <p className="text-xs font-bold text-primary">
-              Selecting fixtures for: {draft.bathrooms[activeBath]?.name || `Bathroom ${activeBath + 1}`}
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              These will be added specifically to this bathroom in the quotation.
-            </p>
+          {/* Active Bathroom Header Strip */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-gradient-to-r from-orange-50/70 via-orange-50/30 to-amber-50/40 p-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-md bg-primary px-2 py-0.5 text-[11px] font-black text-white">
+                  BATHROOM {activeBath + 1}
+                </span>
+                <p className="text-sm font-bold text-foreground">{activeBathName}</p>
+                {activeBathBundle ? (
+                  <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 text-[10px] font-bold">
+                    Bundle: {activeBathBundle.bundleName}
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {activeBathItemCount > 0
+                  ? `${activeBathItemCount} fixture${activeBathItemCount === 1 ? '' : 's'} selected · Subtotal: ${formatINR(activeBathSubtotal)}`
+                  : 'No fixtures selected yet for this bathroom.'}
+              </p>
+            </div>
+
+            {activeBathBundle ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => removeBundleFromBathroom()}
+                className="min-h-9 gap-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <RotateCcw className="size-3.5" />
+                Reset Bathroom Fixtures
+              </Button>
+            ) : null}
           </div>
 
-          {/* Fixture groups */}
-          {groups.map((group) => (
-            <div key={group.name} className="space-y-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{group.name}</h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {group.items.map((m) => (
-                  <FixtureCard
-                    key={m.id}
-                    material={m}
-                    quantity={qtyOf(activeBath, m.id)}
-                    onAdd={() => setQty(activeBath, m.id, 1)}
-                    onInc={() => setQty(activeBath, m.id, qtyOf(activeBath, m.id) + 1)}
-                    onDec={() => setQty(activeBath, m.id, qtyOf(activeBath, m.id) - 1)}
-                  />
-                ))}
+          {/* ================================================================= */}
+          {/* SECTION 1: PREDEFINED BRAND BUNDLES */}
+          {/* ================================================================= */}
+          <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Boxes className="size-4" />
+                  </div>
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                    Predefined Brand Bundles
+                  </h3>
+                  <Badge variant="secondary" className="text-[10px] font-bold">
+                    {bundles.length} Available
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Apply approved brand collections (Basic, Premium, Luxury, or Custom Combos). All products, quantities and snapshot prices are frozen into the quote and can be further tailored below.
+                </p>
+              </div>
+
+              {/* Bundle Type Filter Buttons */}
+              <div className="flex flex-wrap gap-1 rounded-xl bg-muted/60 p-1">
+                {(['ALL', 'BASIC', 'PREMIUM', 'LUXURY', 'CUSTOM'] as const).map((type) => {
+                  const count = type === 'ALL' ? bundles.length : bundles.filter((b) => b.bundleType === type).length
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setBundleFilter(type)}
+                      className={cn(
+                        'rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors',
+                        bundleFilter === type
+                          ? 'bg-card text-primary shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      {type === 'ALL' ? 'All Bundles' : type.charAt(0) + type.slice(1).toLowerCase()} ({count})
+                    </button>
+                  )
+                })}
               </div>
             </div>
-          ))}
 
+            {/* Bundles Grid */}
+            <div className="grid gap-4 md:grid-cols-2">
+              {filteredBundles.map((bundle) => {
+                const isAppliedToCurrent = activeBathBundle?.bundleId === bundle.id
+                const isExpanded = expandedBundleId === bundle.id
+
+                // Calculate bundle pricing
+                const materialCost = bundle.items.reduce((sum, it) => sum + (it.rate || it.material?.price || 0) * it.quantity, 0)
+                const installCost = bundle.items.reduce((sum, it) => sum + (it.installCost || 0), 0)
+                const totalCost = materialCost + installCost
+
+                // Extract unique brands
+                const brandsInBundle = Array.from(
+                  new Set(
+                    bundle.items
+                      .map((it) => it.material?.brand)
+                      .filter((b): b is string => Boolean(b))
+                  )
+                )
+
+                const meta = BUNDLE_TYPE_META[bundle.bundleType] || BUNDLE_TYPE_META.BASIC
+
+                return (
+                  <Card
+                    key={bundle.id}
+                    className={cn(
+                      'flex flex-col justify-between rounded-2xl border p-4 transition-all',
+                      isAppliedToCurrent
+                        ? 'border-primary bg-orange-50/40 ring-2 ring-primary/20 shadow-sm'
+                        : 'border-border bg-card hover:border-primary/40'
+                    )}
+                  >
+                    <div className="space-y-3">
+                      {/* Bundle Header */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className={cn('text-[10px] font-bold', meta.badge)}>
+                              {meta.label}
+                            </Badge>
+                            {isAppliedToCurrent ? (
+                              <Badge className="bg-emerald-600 text-[10px] font-bold text-white">
+                                ✓ Applied to {activeBathName}
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <h4 className="text-sm font-bold text-foreground leading-snug">{bundle.name}</h4>
+                        </div>
+                      </div>
+
+                      {bundle.description ? (
+                        <p className="text-xs text-muted-foreground line-clamp-2">{bundle.description}</p>
+                      ) : null}
+
+                      {/* Brand pills */}
+                      {brandsInBundle.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] font-semibold text-muted-foreground">Brands:</span>
+                          {brandsInBundle.map((br) => (
+                            <span
+                              key={br}
+                              className="inline-block rounded-md bg-muted px-2 py-0.5 text-[10px] font-bold text-foreground"
+                            >
+                              {br}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {/* Item Preview summary */}
+                      <div className="rounded-xl border border-border/80 bg-muted/30 p-2.5 text-xs">
+                        <div className="flex items-center justify-between font-semibold text-foreground">
+                          <span>{bundle.items.length} Curated Products Included</span>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedBundleId(isExpanded ? null : bundle.id)}
+                            className="text-primary hover:underline font-bold text-[11px] flex items-center gap-1"
+                          >
+                            {isExpanded ? 'Hide items' : 'View products'}
+                            <ChevronDown className={cn('size-3 transition-transform', isExpanded ? 'rotate-180' : '')} />
+                          </button>
+                        </div>
+
+                        {/* Expandable item table */}
+                        {isExpanded ? (
+                          <div className="mt-2.5 space-y-1.5 border-t pt-2 max-h-56 overflow-y-auto">
+                            {bundle.items.map((it, idx) => (
+                              <div
+                                key={idx}
+                                className="flex items-center justify-between text-[11px] py-1 border-b border-border/50 last:border-none"
+                              >
+                                <div className="min-w-0 flex-1 pr-2">
+                                  <p className="font-semibold truncate text-foreground">
+                                    {it.material?.name || `Material ${it.materialId.slice(-4)}`}
+                                  </p>
+                                  <p className="text-[10px] text-muted-foreground truncate">
+                                    {it.material?.brand || ''} {it.material?.category?.name ? `· ${it.material.category.name}` : ''}
+                                  </p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className="font-bold text-foreground tabular-nums">
+                                    {it.quantity} {it.unit}
+                                  </span>
+                                  <span className="block text-[10px] text-muted-foreground tabular-nums">
+                                    @ {formatINR(it.rate || it.material?.price || 0)}
+                                    {it.installCost > 0 ? ` (+₹${it.installCost} inst)` : ''}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-[11px] text-muted-foreground line-clamp-1">
+                            {bundle.items
+                              .map((it) => `${it.material?.name || 'Item'} (x${it.quantity})`)
+                              .slice(0, 4)
+                              .join(', ')}
+                            {bundle.items.length > 4 ? ` + ${bundle.items.length - 4} more` : ''}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Pricing Bar */}
+                      <div className="flex items-center justify-between rounded-xl bg-orange-50/50 p-2.5 text-xs">
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Bundle Value
+                          </span>
+                          <span className="text-sm font-extrabold text-primary tabular-nums">
+                            {formatINR(totalCost)}
+                          </span>
+                        </div>
+                        <div className="text-right text-[11px] text-muted-foreground">
+                          <span>Materials: {formatINR(materialCost)}</span>
+                          <span className="block">Installation: {formatINR(installCost)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="mt-4 flex flex-wrap items-center gap-2 pt-2 border-t">
+                      {isAppliedToCurrent ? (
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
+                            <CheckCircle2 className="size-4" />
+                            Applied to {activeBathName}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeBundleFromBathroom()}
+                            className="text-xs text-destructive hover:bg-destructive/10"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <Button
+                            className="flex-1 min-h-10 text-xs font-bold gap-1.5"
+                            onClick={() => applyBundleToBathroom(bundle)}
+                          >
+                            <PackageCheck className="size-4" />
+                            Apply to {activeBathName}
+                          </Button>
+                          {bathCount > 1 ? (
+                            <Button
+                              variant="outline"
+                              className="min-h-10 text-xs font-semibold"
+                              onClick={() => applyBundleToAllBathrooms(bundle)}
+                            >
+                              Apply to All ({bathCount})
+                            </Button>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  </Card>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* ================================================================= */}
+          {/* SECTION 2: INDIVIDUAL FIXTURES & MATERIALS — BRAND-FIRST LAYOUT */}
+          {/* ================================================================= */}
+          <div className="space-y-4">
+            {/* Header + Search */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                  Individual Fixtures &amp; Materials
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Browse by brand, then filter by category. Real-time stock indicators shown on each product.
+                </p>
+              </div>
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by name, brand, SKU..."
+                  className="pl-9 text-xs min-h-10 rounded-xl"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Brand Filter Tabs */}
+            <div className="-mx-1 flex flex-wrap gap-1.5 overflow-x-auto px-1 pb-1 items-center">
+              {/* All Brands pill */}
+              <button
+                type="button"
+                onClick={() => { setBrandFilter('ALL'); setCategoryFilter('ALL') }}
+                className={cn(
+                  'rounded-full px-3 py-1.5 text-xs font-bold transition-all whitespace-nowrap border',
+                  brandFilter === 'ALL'
+                    ? 'bg-primary text-white border-primary shadow-sm'
+                    : 'bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
+                )}
+              >
+                All Brands ({allFixtureMaterials.length})
+              </button>
+
+              {/* Brand pills */}
+              {availableBrands.map((br) => {
+                const count = allFixtureMaterials.filter((m) => m.brand === br).length
+                return (
+                  <button
+                    key={br}
+                    type="button"
+                    onClick={() => { setBrandFilter(br); setCategoryFilter('ALL') }}
+                    className={cn(
+                      'rounded-full px-3 py-1.5 text-xs font-bold transition-all whitespace-nowrap border',
+                      brandFilter === br
+                        ? 'bg-primary text-white border-primary shadow-sm'
+                        : 'bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
+                    )}
+                  >
+                    {br} ({count})
+                  </button>
+                )
+              })}
+
+              {/* Add Brand — inline */}
+              {addBrandOpen ? (
+                <div className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-orange-50/60 px-2 py-1">
+                  <Input
+                    autoFocus
+                    value={newBrandName}
+                    onChange={(e) => setNewBrandName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const name = newBrandName.trim()
+                        if (name && !extraBrands.includes(name) && !availableBrands.includes(name)) {
+                          setExtraBrands((prev) => [...prev, name])
+                          setBrandFilter(name)
+                        }
+                        setNewBrandName('')
+                        setAddBrandOpen(false)
+                      }
+                      if (e.key === 'Escape') { setNewBrandName(''); setAddBrandOpen(false) }
+                    }}
+                    placeholder="Brand name…"
+                    className="h-6 w-28 border-none bg-transparent p-0 text-xs shadow-none focus-visible:ring-0"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const name = newBrandName.trim()
+                      if (name && !extraBrands.includes(name) && !availableBrands.includes(name)) {
+                        setExtraBrands((prev) => [...prev, name])
+                        setBrandFilter(name)
+                      }
+                      setNewBrandName('')
+                      setAddBrandOpen(false)
+                    }}
+                    className="text-primary hover:text-primary/80"
+                  >
+                    <Check className="size-3.5" />
+                  </button>
+                  <button type="button" onClick={() => { setNewBrandName(''); setAddBrandOpen(false) }} className="text-muted-foreground hover:text-foreground">
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAddBrandOpen(true)}
+                  className="flex items-center gap-1 rounded-full border border-dashed border-primary/50 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5 transition-colors whitespace-nowrap"
+                >
+                  <Plus className="size-3" />
+                  Add Brand
+                </button>
+              )}
+            </div>
+
+            {/* Category sub-filter pills — ALWAYS show all categories, filtered by brand when active */}
+            <div className={cn(
+              '-mx-1 flex flex-wrap gap-1.5 overflow-x-auto px-1 pb-1',
+              brandFilter !== 'ALL' && 'border-l-2 border-primary/30 pl-3'
+            )}>
+              <button
+                type="button"
+                onClick={() => setCategoryFilter('ALL')}
+                className={cn(
+                  'rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors whitespace-nowrap',
+                  categoryFilter === 'ALL'
+                    ? 'bg-primary/10 text-primary border border-primary/30'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                )}
+              >
+                All Categories
+              </button>
+              {availableCategories.map((catName) => (
+                <button
+                  key={catName}
+                  type="button"
+                  onClick={() => setCategoryFilter(catName)}
+                  className={cn(
+                    'rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors whitespace-nowrap',
+                    categoryFilter === catName
+                      ? 'bg-primary/10 text-primary border border-primary/30'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  )}
+                >
+                  {catName}
+                </button>
+              ))}
+            </div>
+
+            {/* Brand → Category → Products */}
+            {brandGroups.length === 0 ? (
+              <EmptyBlock text="No fixtures found matching your filters." />
+            ) : (
+              <div className="space-y-5">
+                {brandGroups.map((bg) => {
+                  const isExpanded = expandedBrands.has(bg.brand)
+                  const selectedInBrand = (draft.bathroomFixtures[activeBathKey] ?? []).filter(
+                    (f) => {
+                      const mat = materials.find((m) => m.id === f.materialId)
+                      return f.quantity >= 1 && (mat?.brand || 'Other') === bg.brand
+                    }
+                  ).length
+
+                  return (
+                    <div
+                      key={bg.brand}
+                      className={cn(
+                        'rounded-2xl border transition-all',
+                        isExpanded ? 'border-primary/30 shadow-sm' : 'border-border'
+                      )}
+                    >
+                      {/* Brand header — click to expand/collapse */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedBrands((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(bg.brand)) next.delete(bg.brand)
+                            else next.add(bg.brand)
+                            return next
+                          })
+                        }
+                        className="flex w-full items-center justify-between gap-3 rounded-2xl bg-card px-4 py-3 text-left transition-colors hover:bg-muted/40"
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Brand avatar / badge */}
+                          <div className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary font-black text-sm shrink-0">
+                            {bg.brand.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-foreground leading-tight">{bg.brand}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {bg.categories.length} categor{bg.categories.length === 1 ? 'y' : 'ies'} · {bg.totalItems} product{bg.totalItems === 1 ? '' : 's'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {selectedInBrand > 0 ? (
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
+                              {selectedInBrand} selected
+                            </span>
+                          ) : null}
+                          {/* Category mini-pills */}
+                          <div className="hidden sm:flex flex-wrap gap-1 max-w-xs">
+                            {bg.categories.slice(0, 3).map((cg) => (
+                              <span
+                                key={cg.catName}
+                                className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                              >
+                                {cg.catName}
+                              </span>
+                            ))}
+                            {bg.categories.length > 3 ? (
+                              <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                                +{bg.categories.length - 3} more
+                              </span>
+                            ) : null}
+                          </div>
+                          <ChevronDown
+                            className={cn('size-4 text-muted-foreground transition-transform', isExpanded && 'rotate-180')}
+                          />
+                        </div>
+                      </button>
+
+                      {/* Expanded: categories + products */}
+                      {isExpanded ? (
+                        <div className="border-t px-4 pb-4 pt-3 space-y-5">
+                          {bg.categories.map((cg) => (
+                            <div key={cg.catName} className="space-y-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary uppercase tracking-wide">
+                                  {cg.catName}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground font-medium">
+                                  {cg.items.length} product{cg.items.length === 1 ? '' : 's'}
+                                </span>
+                                <div className="h-px flex-1 bg-border" />
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                {cg.items.map((m) => (
+                                  <FixtureCard
+                                    key={m.id}
+                                    material={m}
+                                    quantity={qtyOf(activeBath, m.id)}
+                                    onAdd={() => setQty(activeBath, m.id, 1)}
+                                    onInc={() => setQty(activeBath, m.id, qtyOf(activeBath, m.id) + 1)}
+                                    onDec={() => setQty(activeBath, m.id, qtyOf(activeBath, m.id) - 1)}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Summary Bar */}
           {totalFixtureCount > 0 ? (
-            <p className="text-xs text-muted-foreground">
-              {totalFixtureCount} fixture item{totalFixtureCount === 1 ? '' : 's'} selected across {bathCount} bathroom{bathCount === 1 ? '' : 's'}.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-orange-50/60 p-4">
+              <div className="space-y-0.5">
+                <p className="text-xs font-bold text-foreground">
+                  {totalFixtureCount} fixture item{totalFixtureCount === 1 ? '' : 's'} configured across {bathCount} bathroom{bathCount === 1 ? '' : 's'}.
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Historical quotations permanently lock these item selections and prices.
+                </p>
+              </div>
+              <div className="text-sm font-bold text-foreground">
+                Current Bathroom ({activeBathName}): <span className="font-extrabold text-primary">{formatINR(activeBathSubtotal)}</span>
+              </div>
+            </div>
           ) : null}
         </>
       )}
@@ -2219,50 +2991,108 @@ function FixtureCard({
   onDec: () => void
 }) {
   const selected = quantity >= 1
+  const availableStock = material.availableQty ?? Math.max(0, (material.stockQty ?? 0) - (material.reservedQty ?? 0))
+  const isOutOfStock = material.isOutOfStock ?? availableStock <= 0
+  const isLowStock = material.isLowStock ?? (availableStock > 0 && availableStock <= (material.reorderThreshold ?? 5))
+
   return (
     <div
       className={cn(
-        'flex items-center gap-3 rounded-2xl border p-3 shadow-sm transition-colors',
-        selected ? 'border-primary/60 bg-orange-50/40' : 'border-border bg-card'
+        'flex flex-col justify-between gap-2.5 rounded-2xl border p-3.5 shadow-sm transition-all',
+        selected ? 'border-primary/60 bg-orange-50/40 ring-1 ring-primary/20' : 'border-border bg-card hover:border-border/80'
       )}
     >
-      <MaterialImage material={material} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-foreground">{material.name}</p>
-        {material.brand ? <p className="truncate text-xs text-muted-foreground">{material.brand}</p> : null}
-        <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-          {material.unit}
-        </span>
-      </div>
-      {selected ? (
-        <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            className="size-11 rounded-xl"
-            onClick={onDec}
-            aria-label={`Decrease ${material.name} quantity`}
-          >
-            <Minus className="size-4" />
-          </Button>
-          <span className="w-7 text-center text-sm font-extrabold tabular-nums">{quantity}</span>
-          <Button
-            variant="outline"
-            size="icon"
-            className="size-11 rounded-xl"
-            onClick={onInc}
-            disabled={quantity >= MAX_QTY}
-            aria-label={`Increase ${material.name} quantity`}
-          >
-            <Plus className="size-4" />
-          </Button>
+      <div className="flex items-start gap-3">
+        <MaterialImage material={material} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {material.brand ? (
+              <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold text-stone-700">
+                {material.brand}
+              </span>
+            ) : null}
+            {material.sku ? (
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {material.sku}
+              </span>
+            ) : null}
+          </div>
+
+          <p className="mt-0.5 text-sm font-semibold text-foreground leading-snug line-clamp-2">
+            {material.name}
+          </p>
+
+          {material.description ? (
+            <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">{material.description}</p>
+          ) : null}
+
+          {/* Pricing & Stock Badges */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-primary tabular-nums">
+              {formatINR(material.price)}
+              <span className="text-[10px] font-normal text-muted-foreground ml-0.5">/{material.unit}</span>
+            </span>
+
+            {/* Inventory / Stock Pill */}
+            {isOutOfStock ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">
+                ✕ Out of Stock ({material.stockQty ?? 0} physical)
+              </span>
+            ) : isLowStock ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                ⚠ Low Stock: {availableStock} left
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                ✓ In Stock: {availableStock} avail
+              </span>
+            )}
+          </div>
         </div>
-      ) : (
-        <Button variant="outline" className="min-h-11 shrink-0 gap-1.5 text-xs" onClick={onAdd}>
-          <Plus className="size-4" />
-          Add
-        </Button>
-      )}
+      </div>
+
+      {/* Stepper & Line Subtotal */}
+      <div className="flex items-center justify-between border-t pt-2 mt-1">
+        <div className="text-xs text-muted-foreground">
+          {selected ? (
+            <span className="font-semibold text-foreground">
+              Total: <span className="font-extrabold text-primary tabular-nums">{formatINR(material.price * quantity)}</span>
+            </span>
+          ) : (
+            <span className="text-[11px]">Unit: {material.unit}</span>
+          )}
+        </div>
+
+        {selected ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-9 rounded-xl"
+              onClick={onDec}
+              aria-label={`Decrease ${material.name} quantity`}
+            >
+              <Minus className="size-3.5" />
+            </Button>
+            <span className="w-7 text-center text-sm font-extrabold tabular-nums">{quantity}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-9 rounded-xl"
+              onClick={onInc}
+              disabled={quantity >= MAX_QTY}
+              aria-label={`Increase ${material.name} quantity`}
+            >
+              <Plus className="size-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <Button variant="outline" size="sm" className="min-h-9 shrink-0 gap-1.5 text-xs font-semibold" onClick={onAdd}>
+            <Plus className="size-3.5" />
+            Add
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

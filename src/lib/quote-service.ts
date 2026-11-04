@@ -65,6 +65,8 @@ export interface QuotePayload {
   customer?: QuoteCustomerInput
   bathrooms: QuoteBathroomInput[]
   packageId: string
+  bundleId?: string | null
+  bundleName?: string | null
   selections?: {
     tileIds?: Array<{ materialId: string }>
     fixtures?: Array<{ materialId: string; quantity: number }>
@@ -508,6 +510,22 @@ export async function createVersionFromPayload(opts: {
     const packageAmount = round2(combined.totalFloorArea * pkg.pricePerSqft)
     const itemsAmount = round2(allItems.reduce((s, it) => s + it.amount, 0))
 
+        // Load material metadata for freezing historical snapshots (brand, SKU)
+    const refMaterialIds = Array.from(
+      new Set(
+        allItems
+          .map((i) => i.materialId)
+          .filter((id): id is string => typeof id === 'string' && Boolean(id))
+      )
+    )
+    const referencedMaterials = refMaterialIds.length > 0
+      ? await tx.material.findMany({
+          where: { id: { in: refMaterialIds } },
+          select: { id: true, name: true, brand: true, sku: true },
+        })
+      : []
+    const matMetaMap = new Map(referencedMaterials.map((m) => [m.id, m]))
+
     const version = await tx.quotationVersion.create({
       data: {
         quotationId: quotation.id,
@@ -528,32 +546,57 @@ export async function createVersionFromPayload(opts: {
         gstRate: settings.gstRate,
         gstAmount: combined.projectGstAmount,
         totalPayable: combined.finalQuotationAmount,
+        bundleId: optionalText(payload?.bundleId),
+        bundleName: optionalText(payload?.bundleName),
         notes: optionalText(payload?.notes),
         createdById: user.id,
         bathrooms: {
-          create: combined.bathrooms.map((b) => ({
-            name: b.name,
-            type: b.type,
-            length: b.length,
-            width: b.width,
-            height: b.height,
-            unit: b.unit,
-            areaSqft: b.floorAreaSqft,
-            wallAreaSqft: b.wallAreaSqft,
-            openingsArea: b.openingsAreaSqft,
-            breakdown: JSON.stringify(b),
-          })),
+          create: combined.bathrooms.map((b) => {
+            const fixtureSnapshot = JSON.stringify(
+              b.fixtures.map((f) => {
+                const meta = f.materialId ? matMetaMap.get(f.materialId) : null
+                return {
+                  materialId: f.materialId ?? null,
+                  name: f.name,
+                  brand: meta?.brand ?? null,
+                  sku: meta?.sku ?? null,
+                  quantity: f.quantity,
+                  unit: f.unit,
+                  rate: f.rate,
+                  amount: f.amount ?? round2(f.quantity * f.rate),
+                }
+              })
+            )
+            return {
+              name: b.name,
+              type: b.type,
+              length: b.length,
+              width: b.width,
+              height: b.height,
+              unit: b.unit,
+              areaSqft: b.floorAreaSqft,
+              wallAreaSqft: b.wallAreaSqft,
+              openingsArea: b.openingsAreaSqft,
+              breakdown: JSON.stringify(b),
+              fixtureSnapshot,
+            }
+          }),
         },
         items: {
-          create: allItems.map((i) => ({
-            section: i.section,
-            materialId: i.materialId,
-            name: i.name,
-            quantity: i.quantity,
-            unit: i.unit,
-            rate: i.rate,
-            amount: i.amount,
-          })),
+          create: allItems.map((i) => {
+            const meta = i.materialId ? matMetaMap.get(i.materialId) : null
+            return {
+              section: i.section,
+              materialId: i.materialId,
+              name: i.name,
+              brand: meta?.brand ?? null,
+              sku: meta?.sku ?? null,
+              quantity: i.quantity,
+              unit: i.unit,
+              rate: i.rate,
+              amount: i.amount,
+            }
+          }),
         },
       },
     })

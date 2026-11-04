@@ -64,6 +64,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           versionType: current.versionType,
           status: current.status,
           notes: current.notes,
+          bundleId: current.bundleId,
+          bundleName: current.bundleName,
           packageId: current.packageId,
           packageName: current.packageName,
           packageRate: current.packageRate,
@@ -99,6 +101,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
               wallAreaSqft: b.wallAreaSqft ?? 0,
               openingsArea: b.openingsArea ?? 0,
               breakdown,
+              fixtureSnapshot: b.fixtureSnapshot ? (() => { try { return JSON.parse(b.fixtureSnapshot) } catch { return null } })() : null,
             }
           }),
           items: items.map((i) => ({
@@ -107,6 +110,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             materialId: i.materialId,
             bathroomId: (i as any).bathroomId ?? null,
             name: i.name,
+            brand: i.brand ?? null,
+            sku: i.sku ?? null,
             quantity: i.quantity,
             unit: i.unit,
             rate: i.rate,

@@ -8,6 +8,7 @@ const QUANTITY_RULES = ['AREA', 'PIECE', 'FIXED']
 /**
  * GET /api/materials?search=&category=<id|name>&status=ACTIVE|ALL
  * Admins ALWAYS receive ACTIVE only; Super Admin may pass status=ALL.
+ * Includes inventory details (physical stock, reserved qty, available qty, low stock status).
  */
 export async function GET(req: NextRequest) {
   try {
@@ -23,10 +24,11 @@ export async function GET(req: NextRequest) {
     }
     if (search) {
       where.OR = [
-        { name: { contains: search } },
-        { brand: { contains: search } },
-        { sku: { contains: search } },
-        { description: { contains: search } },
+        { name: { contains: search, mode: 'insensitive' } },
+        { brand: { contains: search, mode: 'insensitive' } },
+        { sku: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+        { subCategory: { contains: search, mode: 'insensitive' } },
       ]
     }
     if (category) {
@@ -35,10 +37,56 @@ export async function GET(req: NextRequest) {
 
     const materials = await db.material.findMany({
       where,
-      include: { category: { select: { id: true, name: true } } },
+      include: {
+        category: { select: { id: true, name: true } },
+        reservations: {
+          where: { status: 'RESERVED' },
+          select: { qtyReserved: true },
+        },
+      },
       orderBy: { name: 'asc' },
     })
-    return NextResponse.json({ materials })
+
+    const enriched = materials.map((m) => {
+      const activeReserved = m.reservations.reduce((sum, r) => sum + r.qtyReserved, 0)
+      const currentStock = m.stockQty ?? 0
+      const availableQty = Math.max(0, currentStock - activeReserved)
+      const threshold = m.reorderThreshold ?? 5
+      const isLowStock = currentStock > 0 && availableQty <= threshold
+      const isOutOfStock = availableQty <= 0
+
+      return {
+        id: m.id,
+        categoryId: m.categoryId,
+        name: m.name,
+        subCategory: m.subCategory,
+        brand: m.brand,
+        sku: m.sku,
+        description: m.description,
+        purchaseCost: m.purchaseCost ?? 0,
+        price: m.price ?? 0,
+        unit: m.unit,
+        coverage: m.coverage,
+        coverageUnit: m.coverageUnit,
+        wastagePercent: m.wastagePercent,
+        quantityRule: m.quantityRule,
+        packageQty: m.packageQty ?? 1,
+        supplier: m.supplier,
+        imageUrl: m.imageUrl,
+        status: m.status,
+        stockQty: currentStock,
+        reservedQty: activeReserved,
+        availableQty,
+        reorderThreshold: threshold,
+        isLowStock,
+        isOutOfStock,
+        category: m.category,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
+      }
+    })
+
+    return NextResponse.json({ materials: enriched })
   } catch (e) {
     return jsonError(e)
   }
@@ -62,6 +110,7 @@ interface MaterialCreateBody {
   supplier?: string
   imageUrl?: string
   reorderThreshold?: number | string
+  stockQty?: number | string
 }
 
 /** POST /api/materials — SUPER_ADMIN only. */
@@ -90,6 +139,7 @@ export async function POST(req: NextRequest) {
     const wastagePercent = Number(body.wastagePercent)
     const purchaseCost = Number(body.purchaseCost)
     const packageQty = Number(body.packageQty)
+    const stockQty = Number(body.stockQty)
     const reorderThreshold = body.reorderThreshold !== undefined ? Number(body.reorderThreshold) : null
 
     const material = await db.material.create({
@@ -110,6 +160,7 @@ export async function POST(req: NextRequest) {
         packageQty: Number.isFinite(packageQty) && packageQty > 0 ? packageQty : 1,
         supplier: body.supplier?.trim() || null,
         imageUrl: body.imageUrl?.trim() || null,
+        stockQty: Number.isFinite(stockQty) && stockQty >= 0 ? stockQty : 0,
         reorderThreshold: reorderThreshold !== null && Number.isFinite(reorderThreshold) ? reorderThreshold : null,
         createdById: user.id,
       },

@@ -17,6 +17,7 @@ import {
   PackageMinus,
   PackagePlus,
   RefreshCw,
+  RotateCcw,
   Search,
   SlidersHorizontal,
   Warehouse,
@@ -127,7 +128,7 @@ export default function InventoryView() {
   const recentTransactions = data?.recentTransactions ?? []
 
   // Dialog states
-  const [activeAction, setActiveAction] = useState<'RECEIVE' | 'ISSUE' | 'ADJUST' | null>(null)
+  const [activeAction, setActiveAction] = useState<'RECEIVE' | 'ISSUE' | 'ADJUST' | 'RETURN' | null>(null)
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null)
   const [historyMovements, setHistoryMovements] = useState<InventoryTx[]>([])
@@ -142,7 +143,7 @@ export default function InventoryView() {
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  function openAction(action: 'RECEIVE' | 'ISSUE' | 'ADJUST', item: InventoryItem) {
+  function openAction(action: 'RECEIVE' | 'ISSUE' | 'ADJUST' | 'RETURN', item: InventoryItem) {
     setActiveAction(action)
     setSelectedItem(item)
     setQtyInput('')
@@ -208,6 +209,25 @@ export default function InventoryView() {
         void refresh()
       } catch (e: any) {
         setFormError(e.message || 'Failed to record stock issue.')
+      } finally {
+        setSubmitting(false)
+      }
+
+    } else if (activeAction === 'RETURN') {
+      if (!qty || qty <= 0) return setFormError('Enter a valid returned quantity greater than 0.')
+      setSubmitting(true)
+      try {
+        await apiPost('/api/inventory/return', {
+          materialId: selectedItem.id,
+          qty,
+          returnedToInventory: true,
+          notes: notesInput.trim() || undefined,
+        })
+        toast.success(`Recorded return of ${qty} ${selectedItem.unit} of ${selectedItem.name}.`)
+        setActiveAction(null)
+        void refresh()
+      } catch (e: any) {
+        setFormError(e.message || 'Failed to record return.')
       } finally {
         setSubmitting(false)
       }
@@ -462,6 +482,17 @@ export default function InventoryView() {
                     <PackageMinus className="size-3.5" />
                     Issue
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openAction('RETURN', item)}
+                    className="h-9 gap-1 text-xs text-purple-600 hover:bg-purple-50 hover:text-purple-700"
+                    title="Process material return to inventory"
+                  >
+                    <RotateCcw className="size-3.5" />
+                    Return
+                  </Button>
+
 
                   {isSuperAdmin && (
                     <Button
@@ -643,6 +674,8 @@ export default function InventoryView() {
                           'text-[10px] font-bold',
                           tx.type === 'RECEIVED'
                             ? 'border-green-200 bg-green-50 text-green-700'
+                            : tx.type === 'RETURNED'
+                            ? 'border-purple-200 bg-purple-50 text-purple-700'
                             : tx.type === 'ISSUED'
                             ? 'border-blue-200 bg-blue-50 text-blue-700'
                             : 'border-amber-200 bg-amber-50 text-amber-700'

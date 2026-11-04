@@ -65,6 +65,8 @@ interface QuotationItem {
   section: string
   materialId: string | null
   name: string
+  brand?: string | null
+  sku?: string | null
   quantity: number
   unit: string
   rate: number
@@ -91,6 +93,8 @@ interface CurrentVersion {
   versionType: string
   status: string
   notes: string | null
+  bundleId?: string | null
+  bundleName?: string | null
   packageName: string
   packageRate: number
   packageAmount: number
@@ -556,7 +560,14 @@ export default function QuotationDetailView() {
         <Card className="gap-0 rounded-2xl border p-4 shadow-sm md:p-5">
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Package</p>
           <div className="mt-3 space-y-1">
-            <p className="text-base font-bold text-foreground">{version.packageName}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-base font-bold text-foreground">{version.packageName}</p>
+              {version.bundleName ? (
+                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-[11px] font-semibold">
+                  Bundle: {version.bundleName}
+                </Badge>
+              ) : null}
+            </div>
             <p className="text-sm font-semibold text-primary">{formatINR(version.packageRate)}/sq.ft</p>
           </div>
         </Card>

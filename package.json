@@ -6,7 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "next dev --webpack -p 3000",
     "postinstall": "prisma generate",
     "build": "prisma generate && next build --webpack && node scripts/copy-standalone.mjs",
     "start": "node .next/standalone/server.js",

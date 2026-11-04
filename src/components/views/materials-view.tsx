@@ -540,8 +540,8 @@ export default function MaterialsView() {
                           (m.stockQty ?? 0) <= 0
                             ? 'bg-red-50 text-red-600'
                             : (m.stockQty ?? 0) <= (m.reorderThreshold ?? 5)
-                            ? 'bg-amber-50 text-amber-600'
-                            : 'bg-emerald-50 text-emerald-700'
+                              ? 'bg-amber-50 text-amber-600'
+                              : 'bg-emerald-50 text-emerald-700'
                         )}
                       >
                         {(m.stockQty ?? 0) <= 0

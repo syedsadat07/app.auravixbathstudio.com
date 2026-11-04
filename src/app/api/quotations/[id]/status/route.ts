@@ -4,7 +4,8 @@
  */
 import { ApiError, audit, jsonError, requireUser } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { QUOTE_STATUSES } from '@/lib/status'
+import { ORDER_FLAG_STATUSES, QUOTE_STATUSES } from '@/lib/status'
+import { releaseStockReservations, reserveStockForQuotation } from '@/lib/inventory-service'
 
 /** Statuses an ADMIN may set… */
 const ADMIN_ALLOWED_STATUSES = ['QUOTE_SHARED', 'TC_ACCEPTED', 'PAYMENT_PENDING']
@@ -43,10 +44,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     })
     if (!current) throw new ApiError(400, 'This quotation has no version.')
 
-    await db.$transaction([
-      db.quotation.update({ where: { id }, data: { status } }),
-      db.quotationVersion.update({ where: { id: current.id }, data: { status } }),
-    ])
+    await db.$transaction(async (tx) => {
+      await tx.quotation.update({ where: { id }, data: { status } })
+      await tx.quotationVersion.update({ where: { id: current.id }, data: { status } })
+
+      // Stock movement rules:
+      // - Draft quotations must not reduce physical inventory.
+      // - Approved orders may reserve stock according to the configured workflow.
+      // - Cancelled orders must release reservations where applicable.
+      if (ORDER_FLAG_STATUSES.includes(status)) {
+        await reserveStockForQuotation(current.id, tx)
+      } else if (status === 'CANCELLED' || status === 'EXPIRED') {
+        await releaseStockReservations(current.id, tx)
+      }
+    })
 
     await audit(user, 'QUOTE_STATUS', 'QUOTATION', id, `${quotation.status} → ${status}`)
 
