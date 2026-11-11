@@ -14,8 +14,10 @@ import {
   FileCheck,
   Mail,
   MapPin,
+  PackageCheck,
   Phone,
   RefreshCw,
+  RotateCcw,
   Search,
   ShoppingBag,
   Snowflake,
@@ -188,6 +190,13 @@ function OrderCard({
           : null,
     },
     {
+      label: 'Order Confirmed',
+      icon: PackageCheck,
+      done: quote.status === 'ORDER_CONFIRMED' || quote.status === 'ORDER_FREEZE',
+      // Super Admin-only action — normal admins see this as a read-only stage
+      action: null,
+    },
+    {
       label: 'Order Freeze',
       icon: Snowflake,
       done: flags.orderFreeze,
@@ -354,13 +363,23 @@ function OrderCard({
             </CollapsibleContent>
           </Collapsible>
         )}
-        <Button
-          variant="outline"
-          className="w-full min-h-11 font-semibold"
-          onClick={() => navigate('quotation-detail', { id: quote.id })}
-        >
-          View Quote
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            className="w-full min-h-11 font-semibold"
+            onClick={() => navigate('quotation-detail', { id: quote.id })}
+          >
+            View Quote
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full min-h-11 font-semibold gap-1.5"
+            onClick={() => navigate('refunds', { quotationId: quote.id })}
+          >
+            <RotateCcw className="size-4" />
+            Refunds
+          </Button>
+        </div>
       </div>
 
       {/* Confirm payment / freeze */}
@@ -417,6 +436,7 @@ export default function OrdersView() {
   const { navigate } = useNav()
 
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('ALL')
   const debouncedSearch = useDebounced(search)
 
   const query = useMemo(() => {
@@ -427,8 +447,30 @@ export default function OrdersView() {
 
   const { data, error, loading, refresh } = useApi<OrdersResponse>(`/api/orders?${query}`)
 
-  const orders = useMemo(() => data?.orders ?? [], [data])
+  const orders = useMemo(() => {
+    const all = data?.orders ?? []
+    if (statusFilter === 'ALL') return all
+    return all.filter((o) => o.quote.status === statusFilter)
+  }, [data, statusFilter])
+
   const total = data?.total ?? 0
+
+  // Count per pipeline status for tab badges
+  const statusCounts = useMemo(() => {
+    const all = data?.orders ?? []
+    const counts: Record<string, number> = {
+      ALL: all.length,
+      TC_ACCEPTED: 0,
+      PAYMENT_PENDING: 0,
+      PAYMENT_RECEIVED: 0,
+      ORDER_CONFIRMED: 0,
+      ORDER_FREEZE: 0,
+    }
+    all.forEach((o) => {
+      if (o.quote.status in counts) counts[o.quote.status]++
+    })
+    return counts
+  }, [data])
 
   async function handleStatusChange(
     quoteId: string,
@@ -444,6 +486,16 @@ export default function OrdersView() {
       throw err
     }
   }
+
+  // Status filter tabs definition
+  const STATUS_TABS = [
+    { key: 'ALL', label: 'All' },
+    { key: 'TC_ACCEPTED', label: 'T&C Accepted' },
+    { key: 'PAYMENT_PENDING', label: 'Payment Pending' },
+    { key: 'PAYMENT_RECEIVED', label: 'Payment Received' },
+    { key: 'ORDER_CONFIRMED', label: 'Order Confirmed' },
+    { key: 'ORDER_FREEZE', label: 'Order Freeze' },
+  ] as const
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 md:space-y-6 md:p-6">
@@ -471,6 +523,39 @@ export default function OrdersView() {
           aria-label="Search orders"
         />
       </div>
+
+      {/* Status filter tabs */}
+      {!error && !loading && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setStatusFilter(tab.key)}
+              className={cn(
+                'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                statusFilter === tab.key
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground'
+              )}
+            >
+              {tab.label}
+              {statusCounts[tab.key] > 0 && (
+                <span
+                  className={cn(
+                    'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                    statusFilter === tab.key
+                      ? 'bg-white/20 text-white'
+                      : 'bg-muted text-muted-foreground'
+                  )}
+                >
+                  {statusCounts[tab.key]}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Error state */}
       {error && (
@@ -503,7 +588,7 @@ export default function OrdersView() {
         <>
           <div className="space-y-4">
             {orders.map((order) => (
-              <OrderCard key={order.leadId} order={order} onStatusChange={handleStatusChange} />
+              <OrderCard key={order.quote.id} order={order} onStatusChange={handleStatusChange} />
             ))}
           </div>
 
@@ -513,12 +598,18 @@ export default function OrdersView() {
                 <ShoppingBag className="size-6" />
               </div>
               <p className="font-bold text-foreground">
-                {debouncedSearch.trim() ? 'No orders match your search' : 'No orders yet'}
+                {statusFilter !== 'ALL'
+                  ? `No orders with status "${STATUS_TABS.find((t) => t.key === statusFilter)?.label ?? statusFilter}"`
+                  : debouncedSearch.trim()
+                    ? 'No orders match your search'
+                    : 'No orders yet'}
               </p>
               <p className="max-w-sm text-sm text-muted-foreground">
-                {debouncedSearch.trim()
-                  ? 'Try a different name, lead ID or quote number.'
-                  : 'Quotes move here after T&C / payment — share a quote and record the T&C acceptance to get started.'}
+                {statusFilter !== 'ALL'
+                  ? 'Try selecting a different status tab above.'
+                  : debouncedSearch.trim()
+                    ? 'Try a different name, lead ID or quote number.'
+                    : 'Quotes move here after T&C / payment — share a quote and record the T&C acceptance to get started.'}
               </p>
             </div>
           )}

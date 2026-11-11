@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f5f4f1" />
+  <meta name="description" content="Sign in to the Auravix Bath Studio CRM." />
+  <title>Login — Auravix Bath Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="login.css" />
+</head>
+<body>
+  <main class="login-page">
+    <div class="shader-backdrop" id="shader-container" aria-hidden="true"></div>
+    <div class="shader-wash" aria-hidden="true"></div>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
+    <section class="login-card" aria-labelledby="login-title">
+      <a class="login-brand" href="index.html" aria-label="Auravix Bath Studio dashboard">
+        <span class="brand-mark"><img src="assets/auravix-logo.jpeg" alt="Auravix Bath Studio logo" /></span>
+        <span class="brand-name">
+          <strong>AURAVIX</strong>
+          <small>BATH STUDIO</small>
+        </span>
+      </a>
+
+      <div class="login-heading">
+        <h1 id="login-title">Welcome Back</h1>
+        <p>Sign in to the Quotation &amp; Lead Management System</p>
+      </div>
+
+      <form class="login-form" id="login-form">
+        <div class="form-field">
+          <label class="field-label" for="email">Email or username</label>
+          <input class="field-input" id="email" name="email" type="text" autocomplete="username" placeholder="you@auravixbathstudio.com" required />
+        </div>
+
+        <div class="form-field">
+          <div class="field-heading">
+            <label class="field-label" for="password">Password</label>
+            <a href="#forgot" id="forgot-link">Forgot password?</a>
+          </div>
+          <div class="password-control">
+            <input class="field-input" id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required />
+            <button class="password-toggle" id="password-toggle" type="button" aria-label="Show password" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.2-5 9.5-5 9.5 5 9.5 5-3.2 5-9.5 5-9.5-5-9.5-5Z"></path><circle cx="12" cy="12" r="2.5"></circle></svg>
+            </button>
+          </div>
+        </div>
+
+        <button class="login-submit" type="submit">Login</button>
+        <p class="login-message" id="login-message" role="status" aria-live="polite"></p>
+      </form>
+
+      <p class="login-footer"><span>© 2026 Auravix Bath Studio</span><span>Secure sign in</span></p>
+    </section>
+  </main>
+  <script src="login.js"></script>
+</body>
+</html>

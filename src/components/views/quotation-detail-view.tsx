@@ -563,7 +563,7 @@ export default function QuotationDetailView() {
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-base font-bold text-foreground">{version.packageName}</p>
               {version.bundleName ? (
-                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-[11px] font-semibold">
+                <Badge variant="outline" className="bg-[#fbf4ea] text-[#996832] border-[#e8d5be] text-[11px] font-semibold">
                   Bundle: {version.bundleName}
                 </Badge>
               ) : null}
@@ -942,8 +942,8 @@ export default function QuotationDetailView() {
             {/* 6. Project-wide discounts */}
             {version.discountAmount > 0 ? (
               <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-orange-600">6. Project-Wide Discount ({discountHint})</span>
-                <span className="font-bold tabular-nums text-orange-600">−{formatINR(version.discountAmount)}</span>
+                <span className="text-[#996832]">6. Project-Wide Discount ({discountHint})</span>
+                <span className="font-bold tabular-nums text-[#996832]">−{formatINR(version.discountAmount)}</span>
               </div>
             ) : null}
 
@@ -1066,7 +1066,7 @@ function Row({ label, value, accent }: { label: string; value: string; accent?: 
     <div className="flex items-baseline justify-between gap-3">
       <span className="text-muted-foreground">{label}</span>
       <span
-        className={cn('shrink-0 font-semibold tabular-nums', accent ? 'text-orange-600' : 'text-foreground')}
+        className={cn('shrink-0 font-semibold tabular-nums', accent ? 'text-[#996832]' : 'text-foreground')}
       >
         {value}
       </span>

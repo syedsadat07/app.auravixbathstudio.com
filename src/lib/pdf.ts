@@ -3,10 +3,9 @@
 /**
  * AURAVIX BATH STUDIO — Quotation PDF export.
  *
- * Captures the (inline-styled) quotation preview node with html2canvas-pro
- * and lays it out on A4 pages with jsPDF. Tall quotations are sliced across
- * multiple pages without cutting rows mid-pixel (page slices are taken at
- * whole-canvas-pixel boundaries).
+ * Captures the quotation preview node with html2canvas-pro and lays it out on A4 pages with jsPDF.
+ * If the preview contains explicit [data-pdf-page] elements, each page is captured individually
+ * to ensure 100% precise pagination, zero slicing across content, and perfect footer alignment.
  */
 
 /** Capture `el` and download it as an A4 PDF named `filename`. */
@@ -16,28 +15,57 @@ export async function downloadQuotationPdf(el: HTMLElement, filename: string): P
     import('jspdf'),
   ])
 
+  const pdf = new jsPDF('p', 'mm', 'a4')
+  const pageWidth = pdf.internal.pageSize.getWidth() // 210mm
+  const pageHeight = pdf.internal.pageSize.getHeight() // 297mm
+
+  // Check for explicit page-based layout
+  const pageElements = el.querySelectorAll<HTMLElement>('[data-pdf-page]')
+
+  if (pageElements.length > 0) {
+    for (let i = 0; i < pageElements.length; i++) {
+      const pageEl = pageElements[i]
+      const canvas = await html2canvas(pageEl, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false,
+      })
+
+      if (i > 0) pdf.addPage()
+      pdf.addImage(
+        canvas.toDataURL('image/jpeg', 0.95),
+        'JPEG',
+        0,
+        0,
+        pageWidth,
+        pageHeight
+      )
+    }
+
+    pdf.save(filename)
+    return
+  }
+
+  // Fallback: Legacy continuous canvas with slice-based pagination
   const canvas = await html2canvas(el, {
     scale: 2,
     backgroundColor: '#ffffff',
     useCORS: true,
   })
 
-  const pdf = new jsPDF('p', 'mm', 'a4')
-  const pageWidth = pdf.internal.pageSize.getWidth() // 210mm
-  const pageHeight = pdf.internal.pageSize.getHeight() // 297mm
   const { width: canvasWidth, height: canvasHeight } = canvas
   if (!canvasWidth || !canvasHeight) throw new Error('Empty quotation canvas')
 
-  // Whole document fits on one page → single addImage.
   const renderedHeightMm = (canvasHeight * pageWidth) / canvasWidth
   if (renderedHeightMm <= pageHeight) {
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageWidth, renderedHeightMm)
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pageWidth, renderedHeightMm)
     pdf.save(filename)
     return
   }
 
-  // Slice the tall canvas across multiple A4 pages.
-  const sliceHeightPx = Math.floor((canvasWidth * pageHeight) / pageWidth) // one page in canvas px
+  const sliceHeightPx = Math.floor((canvasWidth * pageHeight) / pageWidth)
+  const totalPages = Math.ceil(canvasHeight / sliceHeightPx)
   let offsetPx = 0
   let pageIndex = 0
 
@@ -54,12 +82,22 @@ export async function downloadQuotationPdf(el: HTMLElement, filename: string): P
 
     if (pageIndex > 0) pdf.addPage()
     pdf.addImage(
-      slice.toDataURL('image/jpeg', 0.92),
+      slice.toDataURL('image/jpeg', 0.95),
       'JPEG',
       0,
       0,
       pageWidth,
       (sliceHeight * pageWidth) / canvasWidth
+    )
+
+    // Add page number footer for fallback mode
+    pdf.setFontSize(8)
+    pdf.setTextColor(150, 150, 150)
+    pdf.text(
+      `Page ${pageIndex + 1} of ${totalPages}  •  Auravix Bath Studio Quotation`,
+      pageWidth / 2,
+      pageHeight - 6,
+      { align: 'center' }
     )
 
     offsetPx += sliceHeight

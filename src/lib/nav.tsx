@@ -18,6 +18,7 @@ export type AppView =
   | 'quotation-wizard'
   | 'quotation-detail'
   | 'orders'
+  | 'refunds'
   | 'appointments'
   | 'materials'
   | 'bundles'

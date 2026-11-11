@@ -73,12 +73,25 @@ export async function reserveStockForQuotation(
     materialQuantities.set(item.materialId, { qty: newQty, itemId: item.id })
   }
 
+  const materialIds = Array.from(materialQuantities.keys())
+  if (materialIds.length === 0) {
+    return { reservedCount: 0, alreadyReserved: false }
+  }
+
+  // Batch prefetch all materials in ONE single query to avoid N+1 queries & transaction timeout
+  const materials = await client.material.findMany({
+    where: { id: { in: materialIds } },
+  })
+  const materialMap = new Map(materials.map((m) => [m.id, m]))
+
   let count = 0
   for (const [materialId, { qty, itemId }] of materialQuantities.entries()) {
-    const material = await client.material.findUnique({ where: { id: materialId } })
+    const material = materialMap.get(materialId)
     if (!material) continue
 
-    // 1. Create StockReservation
+    const updatedReserved = (material.reservedQty ?? 0) + qty
+
+    // Execute sequentially to prevent SQLite lock contention inside transactions
     await client.stockReservation.create({
       data: {
         versionId,
@@ -88,15 +101,10 @@ export async function reserveStockForQuotation(
         status: 'RESERVED',
       },
     })
-
-    // 2. Increment Material.reservedQty
-    const updatedReserved = (material.reservedQty ?? 0) + qty
     await client.material.update({
       where: { id: materialId },
       data: { reservedQty: updatedReserved },
     })
-
-    // 3. Log InventoryTransaction (RESERVED)
     await client.inventoryTransaction.create({
       data: {
         materialId,
@@ -140,21 +148,17 @@ export async function releaseStockReservations(
 
   let count = 0
   for (const res of activeReservations) {
-    // 1. Mark reservation as RELEASED
+    const currentReserved = res.material.reservedQty ?? 0
+    const newReserved = Math.max(0, currentReserved - res.qtyReserved)
+
     await client.stockReservation.update({
       where: { id: res.id },
       data: { status: 'RELEASED' },
     })
-
-    // 2. Decrement Material.reservedQty (clamped to 0)
-    const currentReserved = res.material.reservedQty ?? 0
-    const newReserved = Math.max(0, currentReserved - res.qtyReserved)
     await client.material.update({
       where: { id: res.materialId },
       data: { reservedQty: newReserved },
     })
-
-    // 3. Log InventoryTransaction (RELEASED)
     await client.inventoryTransaction.create({
       data: {
         materialId: res.materialId,
@@ -215,34 +219,31 @@ export async function dispatchStockForQuotation(
     const newStock = Math.max(0, currentStock - res.qtyReserved)
     const newReserved = Math.max(0, currentReserved - res.qtyReserved)
 
-    // Update material
-    await client.material.update({
-      where: { id: res.materialId },
-      data: {
-        stockQty: newStock,
-        reservedQty: newReserved,
-      },
-    })
-
-    // Update reservation
-    await client.stockReservation.update({
-      where: { id: res.id },
-      data: { status: 'DISPATCHED' },
-    })
-
-    // Log ISSUED transaction
-    await client.inventoryTransaction.create({
-      data: {
-        materialId: res.materialId,
-        type: 'ISSUED',
-        qty: -res.qtyReserved,
-        purchaseCost: material.purchaseCost ?? 0,
-        refType: 'QUOTATION',
-        refId: versionId,
-        notes: `Material dispatched for quotation order ${versionId}`,
-        createdById: userId,
-      },
-    })
+    await Promise.all([
+      client.material.update({
+        where: { id: res.materialId },
+        data: {
+          stockQty: newStock,
+          reservedQty: newReserved,
+        },
+      }),
+      client.stockReservation.update({
+        where: { id: res.id },
+        data: { status: 'DISPATCHED' },
+      }),
+      client.inventoryTransaction.create({
+        data: {
+          materialId: res.materialId,
+          type: 'ISSUED',
+          qty: -res.qtyReserved,
+          purchaseCost: material.purchaseCost ?? 0,
+          refType: 'QUOTATION',
+          refId: versionId,
+          notes: `Material dispatched for quotation order ${versionId}`,
+          createdById: userId,
+        },
+      }),
+    ])
 
     count++
   }

@@ -37,7 +37,7 @@ export const leadStatusMeta: Record<string, { label: string; sub?: string; badge
   MEETING_DONE: { label: 'Meeting Done', badge: 'bg-purple-50 text-purple-700 border-purple-200' },
   QUOTE_PREPARING: { label: 'Quote Preparing', badge: 'bg-amber-50 text-amber-700 border-amber-200' },
   QUOTE_SHARED: { label: 'Quote Shared', badge: 'bg-violet-50 text-violet-700 border-violet-200' },
-  FOLLOW_UP: { label: 'Follow-up', badge: 'bg-orange-50 text-orange-700 border-orange-200' },
+  FOLLOW_UP: { label: 'Follow-up', badge: 'bg-[#fbf4ea] text-[#996832] border-[#e8d5be]' },
   CONVERTED: { label: 'Converted', badge: 'bg-green-50 text-green-700 border-green-200' },
   CLOSED_LOST: { label: 'Closed Lost', badge: 'bg-red-50 text-red-600 border-red-200' },
 }
@@ -74,7 +74,7 @@ export const quoteStatusMeta: Record<string, { label: string; badge: string }> =
   PUBLISHED: { label: 'Published', badge: 'bg-green-50 text-green-700 border-green-200' },
   QUOTE_SHARED: { label: 'Quote Shared', badge: 'bg-violet-50 text-violet-700 border-violet-200' },
   TC_ACCEPTED: { label: 'T&C Accepted', badge: 'bg-teal-50 text-teal-700 border-teal-200' },
-  PAYMENT_PENDING: { label: 'Payment Pending', badge: 'bg-orange-50 text-orange-700 border-orange-200' },
+  PAYMENT_PENDING: { label: 'Payment Pending', badge: 'bg-[#fbf4ea] text-[#996832] border-[#e8d5be]' },
   PAYMENT_RECEIVED: { label: 'Payment Received', badge: 'bg-green-50 text-green-700 border-green-200' },
   ORDER_CONFIRMED: { label: 'Order Confirmed', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   ORDER_FREEZE: { label: 'Order Freeze', badge: 'bg-stone-800 text-stone-100 border-stone-700' },
@@ -112,3 +112,75 @@ export const quantityRuleLabels: Record<string, string> = {
 }
 
 export const unitOptions = ['sq.ft', 'sq.m', 'piece', 'set', 'unit', 'meter', 'running ft', 'kg', 'litre']
+
+// ---------------------------------------------------------------------------
+// Refund Statuses
+// ---------------------------------------------------------------------------
+
+export const REFUND_STATUSES = [
+  'REFUND_REQUESTED',
+  'UNDER_REVIEW',
+  'APPROVED',
+  'REJECTED',
+  'PROCESSING',
+  'PARTIALLY_REFUNDED',
+  'REFUNDED',
+  'FAILED',
+] as const
+
+export type RefundStatus = (typeof REFUND_STATUSES)[number]
+
+export const refundStatusLabels: Record<RefundStatus, string> = {
+  REFUND_REQUESTED: 'Refund Requested',
+  UNDER_REVIEW: 'Under Review',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+  PROCESSING: 'Processing',
+  PARTIALLY_REFUNDED: 'Partially Refunded',
+  REFUNDED: 'Refunded',
+  FAILED: 'Failed',
+}
+
+export const refundStatusMeta: Record<RefundStatus, { label: string; badge: string; desc: string }> = {
+  REFUND_REQUESTED: {
+    label: 'Refund Requested',
+    badge: 'bg-amber-50 text-amber-700 border-amber-200',
+    desc: 'Customer or admin requested a refund. Awaiting review.',
+  },
+  UNDER_REVIEW: {
+    label: 'Under Review',
+    badge: 'bg-purple-50 text-purple-700 border-purple-200',
+    desc: 'Under review by management/accounts.',
+  },
+  APPROVED: {
+    label: 'Approved',
+    badge: 'bg-blue-50 text-blue-700 border-blue-200',
+    desc: 'Refund approved by Super Admin. Pending disbursement confirmation.',
+  },
+  REJECTED: {
+    label: 'Rejected',
+    badge: 'bg-red-50 text-red-700 border-red-200',
+    desc: 'Refund request was rejected after review.',
+  },
+  PROCESSING: {
+    label: 'Processing',
+    badge: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    desc: 'Payout/disbursement is in progress with bank or gateway.',
+  },
+  PARTIALLY_REFUNDED: {
+    label: 'Partially Refunded',
+    badge: 'bg-teal-50 text-teal-700 border-teal-200',
+    desc: 'Partial refund amount confirmed and returned to customer.',
+  },
+  REFUNDED: {
+    label: 'Refunded',
+    badge: 'bg-green-50 text-green-700 border-green-200',
+    desc: 'Full refund amount confirmed and returned to customer.',
+  },
+  FAILED: {
+    label: 'Failed',
+    badge: 'bg-rose-50 text-rose-700 border-rose-200',
+    desc: 'Payment disbursement failed or was rejected by bank.',
+  },
+}
+

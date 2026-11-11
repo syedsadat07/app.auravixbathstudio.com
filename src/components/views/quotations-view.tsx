@@ -395,7 +395,7 @@ export default function QuotationsView() {
         /* Empty state */
         <Card className="gap-0 rounded-2xl border-dashed p-10 shadow-sm">
           <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex size-14 items-center justify-center rounded-full bg-orange-50">
+            <div className="flex size-14 items-center justify-center rounded-full bg-brand/10">
               <FileText className="size-7 text-primary" />
             </div>
             {search || tab !== 'ALL' ? (

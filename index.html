@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#eef5f9" />
+  <meta name="description" content="Auravix Bath Studio CRM dashboard." />
+  <title>Auravix Bath Studio — CRM Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+      <div class="sidebar-brand"><a href="#dashboard" aria-label="Auravix home"><img class="sidebar-logo" src="assets/auravix-logo.jpeg" alt="Auravix logo" /><span><strong>AURAVIX</strong><small>BATH STUDIO</small></span></a><button class="sidebar-close" type="button" aria-label="Close navigation">×</button></div>
+      <div class="sidebar-scroll">
+        <nav class="side-nav">
+          <a class="side-link is-active" href="#dashboard" data-section="Dashboard"><span class="side-icon">▦</span><span>Dashboard</span></a>
+          <a class="side-link" href="#leads" data-section="My Leads"><span class="side-icon">♧</span><span>My Leads</span></a>
+          <a class="side-link" href="#quotations" data-section="Quotations"><span class="side-icon">▤</span><span>Quotations</span></a>
+          <a class="side-link" href="#orders" data-section="Orders"><span class="side-icon">▣</span><span>Orders</span></a>
+          <a class="side-link" href="#refunds" data-section="Refunds"><span class="side-icon">↩</span><span>Refunds</span></a>
+          <a class="side-link" href="#packages" data-section="Packages"><span class="side-icon">◇</span><span>Packages</span></a>
+          <a class="side-link" href="#reports" data-section="Reports"><span class="side-icon">▥</span><span>Reports</span></a>
+          <p class="side-label">Administration</p>
+          <a class="side-link" href="#materials" data-section="Materials"><span class="side-icon">▱</span><span>Materials</span></a>
+          <a class="side-link" href="#bundles" data-section="Brand Bundles"><span class="side-icon">❖</span><span>Brand Bundles</span></a>
+          <a class="side-link" href="#inventory" data-section="Inventory & Stock"><span class="side-icon">▧</span><span>Inventory &amp; Stock</span></a>
+          <a class="side-link" href="#admins" data-section="Admin Management"><span class="side-icon">♙</span><span>Admin Management</span></a>
+          <a class="side-link" href="#settings" data-section="Settings"><span class="side-icon">⚙</span><span>Settings</span></a>
+          <a class="side-link" href="#audit" data-section="Audit Logs"><span class="side-icon">◌</span><span>Audit Logs</span></a>
+        </nav>
+      </div>
+      <div class="sidebar-footer"><div class="sidebar-profile"><span class="sidebar-avatar">S</span><span><strong>Syed Sadat</strong><small>Super Admin</small></span></div><button class="sidebar-more" type="button" aria-label="Profile menu">•••</button></div>
+    </aside>
+
+    <div class="main-shell">
+      <header class="topbar">
+        <button class="mobile-menu" type="button" aria-label="Open navigation" aria-expanded="false"><span></span><span></span><span></span></button>
+        <a class="topbar-brand" href="#dashboard"><img class="topbar-logo" src="assets/auravix-logo.jpeg" alt="Auravix logo" /><span>AURAVIX BATH STUDIO</span></a>
+        <div class="topbar-actions"><button class="icon-button" type="button" aria-label="Search">⌕</button><button class="icon-button has-notification" type="button" aria-label="Notifications">♧</button><button class="profile-button" type="button"><span class="profile-avatar">SS</span><span class="profile-button-copy"><strong>Syed Sadat</strong><small>Super Admin</small></span><span class="chevron">⌄</span></button></div>
+      </header>
+
+      <main class="content" id="dashboard">
+        <div class="page-heading">
+          <div><p class="eyebrow"><span class="eyebrow-dot"></span> Monday, 09 November 2026</p><h1>Welcome Back, <span>Syed</span></h1></div>
+          <div class="heading-actions"><button class="date-control" type="button" id="date-control"><span>◷</span><span id="date-label">01 Jun – 09 Nov, 2026</span></button><button class="primary-button" type="button" id="new-lead"><span>＋</span> Add new lead</button></div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="dashboard-column dashboard-column--left">
+            <article class="surface hero-card">
+              <div class="hero-glow"></div><div class="card-heading"><div><span class="card-kicker card-kicker--light">Total pipeline</span><h2>Pipeline value</h2></div><span class="card-action card-action--light">↗</span></div>
+              <strong class="hero-value">₹25,84,040</strong><p class="hero-note">Across 24 active opportunities</p>
+              <div class="hero-progress"><span style="width: 68%"></span></div><div class="hero-footer"><span>68% of monthly target</span><strong>₹38L</strong></div>
+            </article>
+
+            <article class="surface compact-card"><div class="card-heading"><div><span class="card-kicker">Weekly performance</span><h2>Revenue won</h2></div><span class="metric-change metric-change--up">↑ 12.8%</span></div><div class="stat-row"><strong>₹4,42,680</strong><span>vs last week</span></div><div class="mini-area mini-area--blue"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></article>
+
+            <article class="surface compact-card"><div class="card-heading"><div><span class="card-kicker">Conversion</span><h2>Win rate</h2></div><span class="metric-change metric-change--up">↑ 4.1%</span></div><div class="stat-row"><strong>28.6<span>%</span></strong><span>14 leads · 4 won</span></div><div class="conversion-track"><span style="width: 28.6%"></span></div></article>
+
+            <article class="surface list-card"><div class="card-heading"><div><span class="card-kicker">Stay on top of it</span><h2>Upcoming follow-ups</h2></div><button class="text-action" type="button">See all <span>↗</span></button></div><ul class="task-list"><li><span class="list-icon list-icon--orange">!</span><div><strong>Follow up with Rohit Shetty</strong><small>Today · High priority</small></div><span class="task-dot task-dot--orange"></span></li><li><span class="list-icon list-icon--blue">◷</span><div><strong>Send revised quotation</strong><small>Tomorrow · Riyaz K</small></div><span class="task-dot task-dot--blue"></span></li><li><span class="list-icon list-icon--green">✓</span><div><strong>Confirm site measurement</strong><small>12 Nov · Vikram Rao</small></div><span class="task-dot task-dot--green"></span></li></ul></article>
+
+            <article class="surface contacts-card"><div class="card-heading"><div><span class="card-kicker">Your network</span><h2>Top contacts</h2></div><button class="more-button" type="button" aria-label="More contacts">•••</button></div><div class="contact-stack"><div class="contact-avatars"><span class="contact-avatar contact-avatar--one">RS</span><span class="contact-avatar contact-avatar--two">RK</span><span class="contact-avatar contact-avatar--three">VM</span><span class="contact-avatar contact-avatar--more">+8</span></div><button class="text-action" type="button">View contacts <span>↗</span></button></div></article>
+          </div>
+
+          <div class="dashboard-column dashboard-column--center">
+            <article class="surface chart-card"><div class="card-heading"><div><span class="card-kicker">Pipeline engagement</span><h2>New leads per month</h2></div><div class="segmented"><button class="segment is-active" type="button" data-range="monthly">Monthly</button><button class="segment" type="button" data-range="annually">Annually</button></div></div><div class="chart-summary"><strong id="lead-total">44</strong><span>new leads <b class="metric-change metric-change--up">↑ 17.8%</b></span></div><div class="bar-chart" id="lead-chart" aria-label="New leads per month chart"><div class="bar-y-axis"><span>12</span><span>9</span><span>6</span><span>3</span><span>0</span></div><div class="bars"><div class="bar-column"><span class="bar-value">5</span><i style="height: 43%"></i><small>Jun</small></div><div class="bar-column"><span class="bar-value">8</span><i style="height: 67%"></i><small>Jul</small></div><div class="bar-column"><span class="bar-value">6</span><i style="height: 50%"></i><small>Aug</small></div><div class="bar-column"><span class="bar-value">10</span><i class="is-peak" style="height: 84%"></i><small>Sep</small></div><div class="bar-column"><span class="bar-value">7</span><i style="height: 59%"></i><small>Oct</small></div><div class="bar-column"><span class="bar-value">8</span><i style="height: 67%"></i><small>Nov</small></div></div></div></article>
+
+            <article class="surface activity-card"><div class="card-heading"><div><span class="card-kicker">Keep an eye on it</span><h2>Lead activity</h2></div><button class="text-action" type="button">View all <span>↗</span></button></div><div class="table-wrap"><table class="activity-table"><thead><tr><th>Name</th><th>Date</th><th class="activity-time">Time</th><th>Status</th><th class="activity-value">Value</th></tr></thead><tbody id="activity-rows"><tr data-search="rohit shetty bath renovation"><td><span class="table-avatar">RS</span><span><strong>Rohit Shetty</strong><small>Bathroom renovation</small></span></td><td>09 Nov</td><td class="activity-time">10:42 AM</td><td><span class="stage stage--orange"><i></i>New</span></td><td class="activity-value">₹3.5L</td></tr><tr data-search="riyaz k guest bathroom"><td><span class="table-avatar table-avatar--blue">RK</span><span><strong>Riyaz K</strong><small>Guest bathroom</small></span></td><td>08 Nov</td><td class="activity-time">03:18 PM</td><td><span class="stage stage--blue"><i></i>Qualified</span></td><td class="activity-value">₹2.2L</td></tr><tr data-search="riya menon master bath"><td><span class="table-avatar table-avatar--green">RM</span><span><strong>Riya Menon</strong><small>Master bath refresh</small></span></td><td>07 Nov</td><td class="activity-time">11:26 AM</td><td><span class="stage stage--green"><i></i>Won</span></td><td class="activity-value">₹4.4L</td></tr><tr data-search="vikram rao powder room"><td><span class="table-avatar table-avatar--purple">VR</span><span><strong>Vikram Rao</strong><small>Powder room package</small></span></td><td>06 Nov</td><td class="activity-time">04:20 PM</td><td><span class="stage stage--purple"><i></i>Proposal</span></td><td class="activity-value">₹3.1L</td></tr></tbody></table><div class="empty-state" id="empty-activity">No lead activity matches that search.</div></div></article>
+
+            <article class="surface pipeline-card"><div class="card-heading"><div><span class="card-kicker">Sales pipeline</span><h2>Pipeline by stage</h2></div><button class="text-action" type="button">Open pipeline <span>↗</span></button></div><div class="stage-list"><div class="stage-row"><div><span><i class="stage-color stage-color--orange"></i>New <small>8 deals</small></span><strong>₹8.4L</strong></div><div class="stage-track"><i style="width: 82%; background: #f9734d"></i></div></div><div class="stage-row"><div><span><i class="stage-color stage-color--blue"></i>Qualified <small>6 deals</small></span><strong>₹6.8L</strong></div><div class="stage-track"><i style="width: 68%; background: #557be9"></i></div></div><div class="stage-row"><div><span><i class="stage-color stage-color--purple"></i>Proposal <small>7 deals</small></span><strong>₹7.2L</strong></div><div class="stage-track"><i style="width: 72%; background: #8e6ce3"></i></div></div><div class="stage-row"><div><span><i class="stage-color stage-color--green"></i>Won <small>3 deals</small></span><strong>₹3.2L</strong></div><div class="stage-track"><i style="width: 34%; background: #32b87a"></i></div></div></div></article>
+          </div>
+
+          <div class="dashboard-column dashboard-column--right">
+            <article class="surface goal-card"><div class="card-heading"><div><span class="card-kicker">Revenue goal</span><h2>Closed-won total</h2></div><button class="more-button" type="button" aria-label="More revenue options">•••</button></div><p class="goal-label">Total won</p><strong class="goal-value">₹8,42,280</strong><div class="goal-chart"><svg viewBox="0 0 300 100" preserveAspectRatio="none" aria-label="Revenue goal trend"><defs><linearGradient id="goalFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#67c7ef" stop-opacity=".32"/><stop offset="1" stop-color="#67c7ef" stop-opacity="0"/></linearGradient></defs><path d="M0 82 C38 79 52 57 84 65 S126 47 154 52 S197 22 225 39 S268 21 300 8 V100 H0 Z" fill="url(#goalFill)"></path><path d="M0 82 C38 79 52 57 84 65 S126 47 154 52 S197 22 225 39 S268 21 300 8" fill="none" stroke="#159fd3" stroke-width="3" stroke-linecap="round"></path></svg></div><div class="goal-actions"><button class="primary-button" type="button" id="goal-add-lead"><span>＋</span> Add lead</button><button class="secondary-button" type="button" id="goal-task"><span>✓</span> Task</button></div></article>
+
+            <article class="surface ai-card"><div class="ai-title"><span class="ai-spark">✦</span><div><span class="card-kicker">Auravix intelligence</span><h2>AI insights</h2></div><span class="ai-pulse"></span></div><p>Rohit Shetty and Riyaz K are your warmest opportunities this week. A follow-up today could lift your conversion rate by <strong>6–9%</strong>.</p><button class="ai-link" type="button">Open insight <span>↗</span></button></article>
+
+            <article class="surface source-card"><div class="card-heading"><div><span class="card-kicker">Lead sources</span><h2>Where leads come from</h2></div><button class="more-button" type="button" aria-label="More source options">•••</button></div><div class="source-body"><div class="donut-chart"><div><strong>14</strong><span>leads</span></div></div><ul class="source-list"><li><span><i class="source-color source-color--blue"></i>Instagram</span><strong>6</strong></li><li><span><i class="source-color source-color--sky"></i>Referral</span><strong>4</strong></li><li><span><i class="source-color source-color--navy"></i>Website</span><strong>3</strong></li><li><span><i class="source-color source-color--pale"></i>Other</span><strong>1</strong></li></ul></div></article>
+
+            <article class="surface deals-card"><div class="card-heading"><div><span class="card-kicker">High-value opportunities</span><h2>Top open deals</h2></div><button class="text-action" type="button">View all <span>↗</span></button></div><ul class="deal-list"><li><span class="deal-rank">1</span><span><strong>Rohit Shetty</strong><small>Bathroom renovation</small></span><b>₹4.4L</b></li><li><span class="deal-rank">2</span><span><strong>Riya Menon</strong><small>Master bath refresh</small></span><b>₹3.5L</b></li><li><span class="deal-rank">3</span><span><strong>Vikram Rao</strong><small>Powder room package</small></span><b>₹3.1L</b></li></ul></article>
+          </div>
+        </div>
+        <footer class="content-footer"><span>© 2026 Auravix Bath Studio</span><span>Internal CRM · v1.0</span></footer>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="lead-modal" aria-hidden="true"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="modal-close" type="button" id="close-modal" aria-label="Close modal">×</button><span class="modal-kicker">Quick action</span><h2 id="modal-title">Add a new lead</h2><p>Capture the next opportunity and keep your pipeline moving.</p><form id="lead-form"><label>Customer name<input name="customer" type="text" placeholder="e.g. Ananya Shah" required /></label><label>Project type<select name="project"><option>Bathroom renovation</option><option>Master bath refresh</option><option>Guest bathroom</option><option>Powder room package</option></select></label><div class="modal-actions"><button class="secondary-button" type="button" id="cancel-modal">Cancel</button><button class="primary-button" type="submit">Create lead <span>↗</span></button></div></form></section></div>
+  <div class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

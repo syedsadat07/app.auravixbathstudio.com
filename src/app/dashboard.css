@@ -1,0 +1,843 @@
+/* Auravix Luxury CRM Dashboard Design System */
+
+.auravix-dashboard {
+  --canvas: #f7f6f3;
+  --surface: #ffffff;
+  --surface-muted: #f3f0ea;
+  --ink: #151311;
+  --ink-soft: #6f675e;
+  --ink-faint: #a0978b;
+  --line: #e6dfd5;
+  --brand: #c79a63;
+  --brand-dark: #996832;
+  --brand-soft: #f4e9d9;
+  --shadow-soft: 0 10px 32px rgba(42, 78, 99, 0.04);
+  --shadow-pop: 0 18px 45px rgba(26, 67, 91, 0.10);
+
+  font-family: "DM Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: var(--canvas);
+  margin: 0 auto;
+  max-width: 1680px;
+  padding: 30px clamp(12px, 2.2vw, 36px) 30px 16px;
+  min-height: 100%;
+}
+
+.auravix-dashboard * {
+  box-sizing: border-box;
+}
+
+/* Page heading */
+.auravix-dashboard .page-heading {
+  align-items: flex-end;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.auravix-dashboard .eyebrow,
+.auravix-dashboard .card-kicker {
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.auravix-dashboard .eyebrow {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  margin: 0 0 8px;
+}
+
+.auravix-dashboard .eyebrow-dot {
+  background: var(--brand);
+  border-radius: 50%;
+  height: 6px;
+  width: 6px;
+  box-shadow: 0 0 8px rgba(199, 154, 99, 0.6);
+  animation: auravix-pulse 2s infinite ease-in-out;
+}
+
+@keyframes auravix-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.2); }
+}
+
+.auravix-dashboard h1 {
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(24px, 2.5vw, 34px);
+  letter-spacing: -0.05em;
+  line-height: 1.15;
+  margin: 0;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.auravix-dashboard h1 span {
+  color: var(--brand);
+  font-weight: 700;
+}
+
+/* Dashboard 3-column Grid */
+.auravix-dashboard .dashboard-grid {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(220px, 0.88fr) minmax(440px, 1.75fr) minmax(260px, 0.95fr);
+}
+
+.auravix-dashboard .dashboard-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.auravix-dashboard .surface {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+  padding: 20px;
+  position: relative;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.auravix-dashboard .card-heading {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+}
+
+.auravix-dashboard .card-heading h2 {
+  font-family: "Manrope", sans-serif;
+  font-size: 15px;
+  letter-spacing: -0.04em;
+  margin: 5px 0 0;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.auravix-dashboard .card-kicker {
+  color: var(--ink-faint);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.auravix-dashboard .more-button {
+  background: transparent;
+  color: #a0adb5;
+  font-size: 13px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+.auravix-dashboard .text-action {
+  background: transparent;
+  border: 0;
+  color: var(--brand-dark);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: color 0.15s;
+}
+
+.auravix-dashboard .text-action:hover {
+  color: var(--brand);
+}
+
+.auravix-dashboard .text-action span,
+.auravix-dashboard .ai-link span {
+  font-size: 12px;
+}
+
+/* Compact Cards */
+.auravix-dashboard .compact-card {
+  min-height: 126px;
+}
+
+.auravix-dashboard .metric-change {
+  border-radius: 20px;
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+.auravix-dashboard .metric-change--up {
+  background: #f4e9d9;
+  color: #996832;
+}
+
+.auravix-dashboard .stat-row {
+  align-items: baseline;
+  display: flex;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.auravix-dashboard .stat-row strong {
+  font-family: "Manrope", sans-serif;
+  font-size: 22px;
+  letter-spacing: -0.05em;
+  font-weight: 800;
+}
+
+.auravix-dashboard .stat-row strong span {
+  font-size: 14px;
+}
+
+.auravix-dashboard .stat-row > span {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.auravix-dashboard .mini-area {
+  align-items: end;
+  display: flex;
+  gap: 4px;
+  height: 22px;
+  margin-top: 12px;
+}
+
+.auravix-dashboard .mini-area i {
+  background: #ead6b9;
+  border-radius: 2px 2px 0 0;
+  flex: 1;
+  height: 35%;
+  transition: height 0.3s ease;
+}
+
+.auravix-dashboard .mini-area i:nth-child(2) { height: 64%; }
+.auravix-dashboard .mini-area i:nth-child(3) { height: 48%; }
+.auravix-dashboard .mini-area i:nth-child(4) { height: 79%; }
+.auravix-dashboard .mini-area i:nth-child(5) { height: 56%; }
+.auravix-dashboard .mini-area i:nth-child(6) { height: 90%; }
+.auravix-dashboard .mini-area i:nth-child(7) { height: 70%; }
+.auravix-dashboard .mini-area i:nth-child(8) { background: var(--brand); height: 100%; }
+
+.auravix-dashboard .conversion-track {
+  background: #f3f0ea;
+  border-radius: 10px;
+  height: 7px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.auravix-dashboard .conversion-track span {
+  background: linear-gradient(90deg, #c79a63, var(--brand-dark));
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  transition: width 0.6s ease;
+}
+
+/* List card & task list */
+.auravix-dashboard .list-card,
+.auravix-dashboard .contacts-card {
+  padding-bottom: 16px;
+}
+
+.auravix-dashboard .task-list,
+.auravix-dashboard .deal-list {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+}
+
+.auravix-dashboard .task-list li {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 9px;
+  padding: 10px 0;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.auravix-dashboard .task-list li:hover {
+  background: var(--surface-muted);
+  border-radius: 8px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.auravix-dashboard .task-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 3px;
+}
+
+.auravix-dashboard .list-icon {
+  align-items: center;
+  border-radius: 8px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  height: 27px;
+  justify-content: center;
+  width: 27px;
+}
+
+.auravix-dashboard .list-icon--bronze {
+  background: #f4e9d9;
+  color: #996832;
+}
+
+.auravix-dashboard .list-icon--sand {
+  background: #f3f0ea;
+  color: #7d6e5d;
+}
+
+.auravix-dashboard .list-icon--olive {
+  background: #eef3eb;
+  color: #55774a;
+}
+
+.auravix-dashboard .task-list li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.auravix-dashboard .task-list strong {
+  display: block;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.auravix-dashboard .task-list small {
+  color: var(--ink-faint);
+  display: block;
+  font-size: 8px;
+  margin-top: 2px;
+}
+
+.auravix-dashboard .task-dot {
+  border-radius: 50%;
+  height: 6px;
+  width: 6px;
+  flex-shrink: 0;
+}
+
+.auravix-dashboard .task-dot--bronze { background: #c79a63; }
+.auravix-dashboard .task-dot--sand { background: #996832; }
+.auravix-dashboard .task-dot--olive { background: #55774a; }
+
+/* Contacts card */
+.auravix-dashboard .contact-stack {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 18px;
+}
+
+.auravix-dashboard .contact-avatars {
+  display: flex;
+  padding-left: 8px;
+}
+
+.auravix-dashboard .contact-avatar {
+  align-items: center;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  font-size: 8px;
+  font-weight: 700;
+  height: 29px;
+  justify-content: center;
+  margin-left: -8px;
+  width: 29px;
+}
+
+.auravix-dashboard .contact-avatar--one { background: #c79a63; }
+.auravix-dashboard .contact-avatar--two { background: #996832; }
+.auravix-dashboard .contact-avatar--three { background: #b68a55; }
+.auravix-dashboard .contact-avatar--more { background: var(--ink); }
+
+/* Center Column — Charts */
+.auravix-dashboard .chart-card {
+  min-height: 350px;
+}
+
+.auravix-dashboard .chart-summary {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.auravix-dashboard .chart-summary > strong {
+  font-family: "Manrope", sans-serif;
+  font-size: 26px;
+  letter-spacing: -0.06em;
+  font-weight: 800;
+}
+
+.auravix-dashboard .chart-summary > span {
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.auravix-dashboard .chart-summary b {
+  margin-left: 5px;
+}
+
+.auravix-dashboard .bar-chart {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  height: 230px;
+  margin-top: 16px;
+}
+
+.auravix-dashboard .bar-y-axis {
+  color: var(--ink-faint);
+  display: flex;
+  flex-direction: column;
+  font-size: 8px;
+  justify-content: space-between;
+  padding: 3px 0 26px;
+  text-align: right;
+}
+
+.auravix-dashboard .bars {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 56px,
+    var(--line) 57px,
+    transparent 58px
+  );
+  display: flex;
+  gap: 6%;
+  justify-content: space-around;
+  padding: 6px 2% 0;
+}
+
+.auravix-dashboard .bar-column {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: end;
+  position: relative;
+  cursor: pointer;
+}
+
+.auravix-dashboard .bar-column i {
+  background: #ead5b6;
+  border-radius: 8px 8px 3px 3px;
+  display: block;
+  max-width: 30px;
+  transition: height 0.3s, background 0.2s;
+  width: 68%;
+}
+
+.auravix-dashboard .bar-column i:hover,
+.auravix-dashboard .bar-column i.is-peak {
+  background: var(--brand-dark);
+}
+
+.auravix-dashboard .bar-column small {
+  color: var(--ink-faint);
+  font-size: 8px;
+  margin-top: 8px;
+}
+
+.auravix-dashboard .bar-value {
+  color: var(--brand-dark);
+  font-size: 8px;
+  font-weight: 700;
+  opacity: 0;
+  position: absolute;
+  top: -16px;
+  transition: opacity 0.2s;
+}
+
+.auravix-dashboard .bar-column:hover .bar-value,
+.auravix-dashboard .bar-column:has(i.is-peak) .bar-value,
+.auravix-dashboard .bar-column i.is-peak + .bar-value {
+  opacity: 1;
+}
+
+/* Activity Card & Table */
+.auravix-dashboard .activity-card {
+  min-height: 327px;
+}
+
+.auravix-dashboard .activity-search-bar {
+  margin-top: 14px;
+  position: relative;
+}
+
+.auravix-dashboard .activity-search-input {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 10px;
+  height: 32px;
+  outline: 0;
+  padding: 0 10px;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.auravix-dashboard .activity-search-input:focus {
+  border-color: var(--brand);
+}
+
+.auravix-dashboard .table-wrap {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+
+.auravix-dashboard .activity-table {
+  border-collapse: collapse;
+  min-width: 500px;
+  text-align: left;
+  width: 100%;
+}
+
+.auravix-dashboard .activity-table th {
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  padding: 0 8px 10px;
+  text-transform: uppercase;
+}
+
+.auravix-dashboard .activity-table td {
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 9px;
+  padding: 11px 8px;
+  white-space: nowrap;
+}
+
+.auravix-dashboard .activity-table th:first-child,
+.auravix-dashboard .activity-table td:first-child {
+  padding-left: 0;
+}
+
+.auravix-dashboard .activity-table th:last-child,
+.auravix-dashboard .activity-table td:last-child {
+  padding-right: 0;
+}
+
+.auravix-dashboard .activity-table td:first-child {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.auravix-dashboard .activity-table td:first-child strong {
+  display: block;
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.auravix-dashboard .activity-table td:first-child small {
+  color: var(--ink-faint);
+  display: block;
+  font-size: 8px;
+  margin-top: 2px;
+}
+
+.auravix-dashboard .activity-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.auravix-dashboard .table-avatar {
+  align-items: center;
+  border-radius: 50%;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 8px;
+  font-weight: 700;
+  height: 27px;
+  justify-content: center;
+  width: 27px;
+}
+
+.auravix-dashboard .stage {
+  align-items: center;
+  border-radius: 13px;
+  display: inline-flex;
+  font-size: 8px;
+  font-weight: 600;
+  gap: 5px;
+  padding: 4px 7px;
+}
+
+.auravix-dashboard .stage i {
+  border-radius: 50%;
+  height: 5px;
+  width: 5px;
+}
+
+.auravix-dashboard .stage--bronze {
+  background: #f4e9d9;
+  color: #996832;
+}
+.auravix-dashboard .stage--bronze i { background: #996832; }
+
+.auravix-dashboard .stage--sand {
+  background: #f3f0ea;
+  color: #7d6e5d;
+}
+.auravix-dashboard .stage--sand i { background: #7d6e5d; }
+
+.auravix-dashboard .stage--olive {
+  background: #eef3eb;
+  color: #4a7238;
+}
+.auravix-dashboard .stage--olive i { background: #4a7238; }
+
+.auravix-dashboard .stage--gold {
+  background: #f8edd9;
+  color: #8c7355;
+}
+.auravix-dashboard .stage--gold i { background: #8c7355; }
+
+.auravix-dashboard .activity-value {
+  color: var(--ink) !important;
+  font-weight: 700;
+  text-align: right;
+}
+
+.auravix-dashboard .empty-state {
+  color: var(--ink-soft);
+  font-size: 11px;
+  padding: 25px 0;
+  text-align: center;
+}
+
+/* AI Insights Card */
+.auravix-dashboard .ai-card {
+  background: linear-gradient(140deg, #fbf4ea, #fffaf4);
+  border-color: #eadcc9;
+  min-height: 177px;
+}
+
+.auravix-dashboard .ai-title {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+}
+
+.auravix-dashboard .ai-spark {
+  align-items: center;
+  background: var(--brand-dark);
+  border-radius: 9px;
+  color: #fff;
+  display: flex;
+  font-size: 15px;
+  height: 29px;
+  justify-content: center;
+  width: 29px;
+}
+
+.auravix-dashboard .ai-title h2 {
+  color: var(--ink);
+}
+
+.auravix-dashboard .ai-pulse {
+  background: var(--brand);
+  border-radius: 50%;
+  height: 7px;
+  margin-left: auto;
+  width: 7px;
+  box-shadow: 0 0 6px var(--brand);
+  animation: auravix-pulse 1.8s infinite ease-in-out;
+}
+
+.auravix-dashboard .ai-card p {
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.65;
+  margin: 16px 0 11px;
+}
+
+.auravix-dashboard .ai-card p strong,
+.auravix-dashboard .ai-link {
+  color: var(--brand-dark);
+  font-weight: 700;
+}
+
+.auravix-dashboard .ai-link {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 0;
+}
+
+/* Top Open Deals */
+.auravix-dashboard .deals-card {
+  min-height: 229px;
+}
+
+.auravix-dashboard .deal-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.auravix-dashboard .deal-list li {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.auravix-dashboard .deal-list li:hover {
+  background: var(--surface-muted);
+}
+
+.auravix-dashboard .deal-rank {
+  align-items: center;
+  background: var(--surface-muted);
+  border-radius: 50%;
+  color: var(--ink-soft);
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 700;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.auravix-dashboard .deal-list li > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+
+.auravix-dashboard .deal-list strong {
+  display: block;
+  font-size: 10px;
+  color: var(--ink);
+}
+
+.auravix-dashboard .deal-list small {
+  color: var(--ink-faint);
+  display: block;
+  font-size: 8px;
+  margin-top: 2px;
+}
+
+.auravix-dashboard .deal-list b {
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* Footer */
+.auravix-dashboard .content-footer {
+  align-items: center;
+  color: var(--ink-faint);
+  display: flex;
+  font-size: 8px;
+  justify-content: space-between;
+  letter-spacing: 0.05em;
+  padding: 26px 2px 0;
+  text-transform: uppercase;
+}
+
+/* Media Queries for responsive behavior */
+@media (max-width: 1280px) {
+  .auravix-dashboard .dashboard-grid {
+    gap: 14px;
+    grid-template-columns: minmax(200px, 0.85fr) minmax(390px, 1.70fr) minmax(235px, 0.95fr);
+  }
+  .auravix-dashboard .surface {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .auravix-dashboard .dashboard-grid {
+    grid-template-columns: minmax(200px, 0.85fr) minmax(390px, 1.6fr);
+  }
+  .auravix-dashboard .dashboard-column--right {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .auravix-dashboard .dashboard-column--right > article {
+    min-height: 200px;
+  }
+}
+
+@media (max-width: 760px) {
+  .auravix-dashboard {
+    padding: 20px 12px 18px;
+  }
+  .auravix-dashboard .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .auravix-dashboard .dashboard-grid {
+    display: flex;
+    flex-direction: column;
+  }
+  .auravix-dashboard .dashboard-column,
+  .auravix-dashboard .dashboard-column--right {
+    display: flex;
+    width: 100%;
+  }
+  .auravix-dashboard .dashboard-column--center {
+    order: 1;
+  }
+  .auravix-dashboard .dashboard-column--left {
+    order: 2;
+  }
+  .auravix-dashboard .dashboard-column--right {
+    order: 3;
+  }
+  .auravix-dashboard .chart-card {
+    min-height: 330px;
+  }
+  .auravix-dashboard .activity-time {
+    display: none;
+  }
+  .auravix-dashboard .activity-table {
+    min-width: 360px;
+  }
+  .auravix-dashboard .content-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 400px) {
+  .auravix-dashboard .surface {
+    padding: 14px;
+  }
+  .auravix-dashboard .chart-card .card-heading h2 {
+    font-size: 14px;
+  }
+}

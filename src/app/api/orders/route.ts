@@ -9,8 +9,11 @@ const PAID_LIKE = ['PAYMENT_RECEIVED', 'ORDER_CONFIRMED', 'ORDER_FREEZE']
 
 /**
  * GET /api/orders?search=
- * Orders = leads having at least one quotation in an order-pipeline status.
- * Admin scope = own leads only. Active quote = most advanced (latest updatedAt among pipeline quotes).
+ * Orders = Quotations in an order-pipeline status (TC_ACCEPTED, PAYMENT_PENDING, PAYMENT_RECEIVED, ORDER_CONFIRMED, ORDER_FREEZE).
+ * Supports both lead-linked quotations and direct customer quotations (where leadId may be null).
+ * RBAC:
+ * - Super Admins see all orders.
+ * - Normal Admins see quotations they created OR where the linked lead is assigned to them.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -18,62 +21,70 @@ export async function GET(req: NextRequest) {
     const sa = isSuperAdmin(user)
     const search = req.nextUrl.searchParams.get('search')?.trim()
 
-    const leadWhere: Prisma.LeadWhereInput = {
-      quotations: { some: { status: { in: ORDER_FLAG_STATUSES } } },
-      ...(sa ? {} : { assignedAdminId: user.id }),
-    }
-    if (search) {
-      leadWhere.OR = [
-        { leadNumber: { contains: search } },
-        { customer: { is: { OR: [{ name: { contains: search } }, { phone: { contains: search } }] } } },
-        { quotations: { some: { quotationNumber: { contains: search } } } },
-      ]
+    // RBAC access filter for normal admins
+    const accessFilter: Prisma.QuotationWhereInput = sa
+      ? {}
+      : {
+          OR: [
+            { createdById: user.id },
+            { lead: { assignedAdminId: user.id } },
+          ],
+        }
+
+    // Search filter across quotationNumber, customer name/phone/email, and leadNumber
+    const searchFilter: Prisma.QuotationWhereInput = search
+      ? {
+          OR: [
+            { quotationNumber: { contains: search, mode: 'insensitive' } },
+            { customer: { is: { name: { contains: search, mode: 'insensitive' } } } },
+            { customer: { is: { phone: { contains: search, mode: 'insensitive' } } } },
+            { customer: { is: { email: { contains: search, mode: 'insensitive' } } } },
+            { lead: { is: { leadNumber: { contains: search, mode: 'insensitive' } } } },
+          ],
+        }
+      : {}
+
+    const quoteWhere: Prisma.QuotationWhereInput = {
+      status: { in: ORDER_FLAG_STATUSES },
+      AND: [accessFilter, searchFilter].filter((f) => Object.keys(f).length > 0),
     }
 
-    const leads = await db.lead.findMany({
-      where: leadWhere,
+    const quotes = await db.quotation.findMany({
+      where: quoteWhere,
       include: {
         customer: true,
-        assignedAdmin: { select: { name: true } },
-        quotations: {
+        createdBy: { select: { id: true, name: true } },
+        lead: {
           include: {
-            versions: {
-              orderBy: { versionNumber: 'desc' },
-              include: { _count: { select: { bathrooms: true } } },
-            },
+            assignedAdmin: { select: { id: true, name: true } },
           },
         },
+        versions: {
+          orderBy: { versionNumber: 'desc' },
+          include: { _count: { select: { bathrooms: true } } },
+        },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { updatedAt: 'desc' },
     })
 
-    const orders: unknown[] = []
-    const sortKeys: number[] = []
-
-    for (const lead of leads) {
-      const pipelineQuotes = lead.quotations.filter((q) => ORDER_FLAG_STATUSES.includes(q.status))
-      if (pipelineQuotes.length === 0) continue
-      // Active quote = most advanced: latest updatedAt among pipeline-status quotations
-      const activeQuote = [...pipelineQuotes].sort(
-        (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
-      )[0]
+    const orders = quotes.map((activeQuote) => {
       const currentVersion = activeQuote.versions[0] // highest versionNumber first
       const publishedVersion = activeQuote.versions.find((v) => v.status === 'PUBLISHED')
       const status = activeQuote.status
 
-      orders.push({
-        leadId: lead.id,
-        leadNumber: lead.leadNumber,
-        leadStatus: lead.status,
+      return {
+        leadId: activeQuote.lead?.id ?? activeQuote.id,
+        leadNumber: activeQuote.lead?.leadNumber ?? activeQuote.quotationNumber,
+        leadStatus: activeQuote.lead?.status ?? 'CONVERTED',
         customer: {
-          name: lead.customer.name,
-          phone: lead.customer.phone,
-          email: lead.customer.email,
-          address: lead.customer.address,
-          city: lead.customer.city,
+          name: activeQuote.customer.name,
+          phone: activeQuote.customer.phone,
+          email: activeQuote.customer.email,
+          address: activeQuote.customer.address,
+          city: activeQuote.customer.city,
         },
-        createdAt: lead.createdAt,
-        adviserName: lead.assignedAdmin?.name ?? null,
+        createdAt: activeQuote.lead?.createdAt ?? activeQuote.createdAt,
+        adviserName: activeQuote.lead?.assignedAdmin?.name ?? activeQuote.createdBy?.name ?? null,
         quote: {
           id: activeQuote.id,
           quotationNumber: activeQuote.quotationNumber,
@@ -92,15 +103,10 @@ export async function GET(req: NextRequest) {
           },
         },
         otherVersionsCount: Math.max(activeQuote.versions.length - 1, 0),
-      })
-      sortKeys.push(activeQuote.updatedAt.getTime())
-    }
+      }
+    })
 
-    // Most recent order activity first
-    const paired = orders.map((o, i) => ({ o, k: sortKeys[i] }))
-    paired.sort((a, b) => b.k - a.k)
-
-    return NextResponse.json({ total: paired.length, orders: paired.map((p) => p.o) })
+    return NextResponse.json({ total: orders.length, orders })
   } catch (e) {
     return jsonError(e)
   }

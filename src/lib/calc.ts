@@ -26,9 +26,13 @@ export interface BathroomItemInput {
   name: string
   section: 'TILES' | 'FIXTURES' | 'ACCESSORIES' | 'LABOUR' | 'ADDITIONAL'
   materialId?: string | null
+  brand?: string | null
+  sku?: string | null
+  imageUrl?: string | null
   quantity: number
   unit: string
   rate: number
+  installCost?: number
   amount?: number
 }
 

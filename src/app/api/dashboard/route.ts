@@ -56,6 +56,8 @@ export async function GET(_req: NextRequest) {
       activeAdmins,
       totalCustomers,
       recentRaw,
+      topDealsRaw,
+      leadsBySourceRaw,
     ] = await Promise.all([
       db.appointment.findMany({
         where: { scheduledAt: { gte: todayStart, lt: tomorrowStart }, lead: leadScope },
@@ -100,11 +102,25 @@ export async function GET(_req: NextRequest) {
       db.quotation.findMany({
         where: quoteScope,
         orderBy: { createdAt: 'desc' },
+        take: 6,
+        include: {
+          customer: { select: { name: true, city: true } },
+          versions: { orderBy: { versionNumber: 'desc' }, take: 1, select: { versionNumber: true, totalPayable: true, packageName: true } },
+        },
+      }),
+      db.quotation.findMany({
+        where: { status: { notIn: ['CANCELLED', 'REJECTED'] }, ...quoteScope },
+        orderBy: { createdAt: 'desc' },
         take: 5,
         include: {
-          customer: { select: { name: true } },
-          versions: { orderBy: { versionNumber: 'desc' }, take: 1, select: { versionNumber: true, totalPayable: true } },
+          customer: { select: { name: true, city: true } },
+          versions: { orderBy: { versionNumber: 'desc' }, take: 1, select: { totalPayable: true, grossValue: true, packageName: true } },
         },
+      }),
+      db.lead.groupBy({
+        by: ['source'],
+        _count: { id: true },
+        where: leadScope,
       }),
     ])
 
@@ -158,9 +174,35 @@ export async function GET(_req: NextRequest) {
       totalPayable: q.versions[0]?.totalPayable ?? 0,
       createdAt: q.createdAt,
       customerName: q.customer.name,
-      customer: { name: q.customer.name },
+      customer: { name: q.customer.name, city: q.customer.city },
       versionNumber: q.versions[0]?.versionNumber ?? 1,
+      projectType: q.versions[0]?.packageName ?? 'Bathroom Renovation',
     }))
+
+    // Format top deals
+    const topDeals = topDealsRaw.map((q, idx) => ({
+      rank: idx + 1,
+      id: q.id,
+      quotationNumber: q.quotationNumber,
+      customerName: q.customer.name,
+      projectType: q.versions[0]?.packageName || 'Bathroom renovation',
+      value: q.versions[0]?.totalPayable || q.versions[0]?.grossValue || 0,
+    }))
+
+    // Source breakdown
+    const sourceCounts: Record<string, number> = {
+      Instagram: 0,
+      Referral: 0,
+      Website: 0,
+      Other: 0,
+    }
+    for (const s of leadsBySourceRaw) {
+      const src = (s.source || '').toLowerCase()
+      if (src.includes('insta')) sourceCounts.Instagram += s._count.id
+      else if (src.includes('ref')) sourceCounts.Referral += s._count.id
+      else if (src.includes('web') || src.includes('site')) sourceCounts.Website += s._count.id
+      else sourceCounts.Other += s._count.id
+    }
 
     const ordersTarget = ordersTargetRow ? parseInt(ordersTargetRow.value, 10) || 10 : 10
 
@@ -173,6 +215,8 @@ export async function GET(_req: NextRequest) {
       metrics,
       monthly,
       recentQuotes,
+      topDeals,
+      sourceCounts,
     })
   } catch (e) {
     return jsonError(e)

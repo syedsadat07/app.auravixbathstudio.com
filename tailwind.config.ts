@@ -4,6 +4,7 @@ import tailwindcssAnimate from "tailwindcss-animate";
 const config: Config = {
     darkMode: "class",
     content: [
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
@@ -11,6 +12,28 @@ const config: Config = {
   theme: {
   	extend: {
   		colors: {
+  			orange: {
+  				50: '#faf6f0',
+  				100: '#f4ebd9',
+  				200: '#e8d5be',
+  				300: '#d9bea0',
+  				400: '#c79a63',
+  				500: '#c79a63',
+  				600: '#996832',
+  				700: '#805626',
+  				800: '#67441c',
+  				900: '#543616',
+  				950: '#321e0a',
+  			},
+  			brand: {
+  				DEFAULT: '#c79a63',
+  				dark: '#996832',
+  				light: '#f4ebd9',
+  			},
+  			charcoal: {
+  				DEFAULT: '#19181c',
+  				deep: '#121110',
+  			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {

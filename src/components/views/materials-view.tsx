@@ -417,7 +417,7 @@ export default function MaterialsView() {
 
       {/* Admin notice */}
       {!isSuperAdmin && (
-        <Alert className="rounded-2xl border-orange-200 bg-orange-50 text-orange-800">
+        <Alert className="rounded-2xl border-[#e8d5be] bg-[#fbf4ea] text-[#996832]">
           <Info className="size-4" />
           <AlertDescription>
             Materials are managed by Super Admins. Contact them for pricing changes.

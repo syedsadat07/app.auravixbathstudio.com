@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./dashboard.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -49,71 +50,71 @@
 
 :root {
   --radius: 0.75rem;
-  /* AURAVIX brand */
-  --brand: #f2620f;
-  --brand-dark: #d9530b;
-  --charcoal: #26262b;
-  --charcoal-deep: #1d1d21;
-  --background: #faf9f7;
-  --foreground: #26262b;
+  /* AURAVIX luxury warm stone, pure white, and warm bronze brand */
+  --brand: #c79a63;
+  --brand-dark: #996832;
+  --charcoal: #19181c;
+  --charcoal-deep: #121110;
+  --background: #f7f6f3;
+  --foreground: #151311;
   --card: #ffffff;
-  --card-foreground: #26262b;
+  --card-foreground: #151311;
   --popover: #ffffff;
-  --popover-foreground: #26262b;
-  --primary: #f2620f;
+  --popover-foreground: #151311;
+  --primary: #c79a63;
   --primary-foreground: #ffffff;
-  --secondary: #f5f1ec;
-  --secondary-foreground: #3f3c39;
-  --muted: #f4f2ef;
-  --muted-foreground: #75716c;
-  --accent: #fdeee2;
-  --accent-foreground: #c14d08;
+  --secondary: #f3f0ea;
+  --secondary-foreground: #151311;
+  --muted: #f3f0ea;
+  --muted-foreground: #6f675e;
+  --accent: #f4e9d9;
+  --accent-foreground: #996832;
   --destructive: #dc2626;
-  --border: #e8e4de;
-  --input: #e2ded7;
-  --ring: #f2620f;
-  --chart-1: #f2620f;
-  --chart-2: #7c3aed;
-  --chart-3: #059669;
-  --chart-4: #d97706;
-  --chart-5: #0284c7;
-  --sidebar: #1d1d21;
-  --sidebar-foreground: #d6d3d1;
-  --sidebar-primary: #f2620f;
+  --border: #e6dfd5;
+  --input: #e6dfd5;
+  --ring: #c79a63;
+  --chart-1: #c79a63;
+  --chart-2: #996832;
+  --chart-3: #7d6e5d;
+  --chart-4: #b68a55;
+  --chart-5: #a0978b;
+  --sidebar: #19181c;
+  --sidebar-foreground: #c5c0ba;
+  --sidebar-primary: #c79a63;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #323236;
+  --sidebar-accent: #343338;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #323236;
-  --sidebar-ring: #f2620f;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: #c79a63;
 }
 
 .dark {
-  --background: #161618;
-  --foreground: #f4f2ef;
-  --card: #1f1f22;
-  --card-foreground: #f4f2ef;
-  --popover: #1f1f22;
-  --popover-foreground: #f4f2ef;
-  --primary: #f2620f;
+  --background: #121110;
+  --foreground: #f7f6f3;
+  --card: #19181c;
+  --card-foreground: #f7f6f3;
+  --popover: #19181c;
+  --popover-foreground: #f7f6f3;
+  --primary: #c79a63;
   --primary-foreground: #ffffff;
-  --secondary: #2a2a2e;
+  --secondary: #252429;
   --secondary-foreground: #e7e5e4;
-  --muted: #26262a;
-  --muted-foreground: #a8a29e;
-  --accent: #33261c;
-  --accent-foreground: #fb923c;
+  --muted: #201f24;
+  --muted-foreground: #a0978b;
+  --accent: #2e261d;
+  --accent-foreground: #c79a63;
   --destructive: #ef4444;
-  --border: #303034;
-  --input: #303034;
-  --ring: #f2620f;
-  --sidebar: #1d1d21;
-  --sidebar-foreground: #d6d3d1;
-  --sidebar-primary: #f2620f;
+  --border: #2e2d33;
+  --input: #2e2d33;
+  --ring: #c79a63;
+  --sidebar: #121110;
+  --sidebar-foreground: #c5c0ba;
+  --sidebar-primary: #c79a63;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #323236;
+  --sidebar-accent: #26252b;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #323236;
-  --sidebar-ring: #f2620f;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: #c79a63;
 }
 
 @layer base {

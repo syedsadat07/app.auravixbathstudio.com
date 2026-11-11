@@ -17,6 +17,7 @@ import {
   Menu,
   MoreHorizontal,
   Package,
+  RotateCcw,
   Search,
   Settings,
   ShieldCheck,
@@ -72,6 +73,7 @@ const MAIN_NAV: NavItem[] = [
   { view: 'leads', label: 'My Leads', icon: Users },
   { view: 'quotations', label: 'Quotations', icon: FileText },
   { view: 'orders', label: 'Orders', icon: ShoppingBag },
+  { view: 'refunds', label: 'Refunds', icon: RotateCcw },
   { view: 'packages', label: 'Packages', icon: Package },
   { view: 'reports', label: 'Reports', icon: BarChart3 },
 ]
@@ -131,13 +133,13 @@ function BrandBlock() {
   return (
     <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-4">
       <img
-        src="/brand/logo.png"
+        src="/brand/auravix-logo.jpeg"
         alt="AURAVIX BATH STUDIO logo"
-        className="size-9 shrink-0 rounded-lg object-cover"
+        className="size-8 shrink-0 rounded-lg object-cover border border-[#c79a63]/40"
       />
       <div className="min-w-0 leading-tight">
         <p className="truncate text-sm font-bold tracking-wide text-white">AURAVIX</p>
-        <p className="truncate text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">
+        <p className="truncate text-[9px] font-semibold uppercase tracking-[0.22em] text-[#c79a63]">
           Bath Studio
         </p>
       </div>
@@ -161,13 +163,13 @@ function NavButton({
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'flex min-h-[44px] w-full items-center gap-3 rounded-r-lg border-l-4 px-4 text-sm font-medium transition-colors',
+        'flex min-h-[42px] w-full items-center gap-3 rounded-lg px-3.5 text-sm font-medium transition-colors',
         active
-          ? 'border-primary bg-[var(--sidebar-accent)] text-white'
-          : 'border-transparent text-stone-300 hover:bg-white/5 hover:text-white'
+          ? 'bg-[#343338] text-white shadow-[inset_3px_0_#c79a63]'
+          : 'text-stone-300 hover:bg-white/5 hover:text-white'
       )}
     >
-      <Icon className="size-4 shrink-0" />
+      <Icon className={cn('size-4 shrink-0', active ? 'text-[#c79a63]' : 'text-stone-400')} />
       <span className="truncate">{item.label}</span>
     </button>
   )
@@ -405,10 +407,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
           <div className="flex min-w-0 items-center gap-2.5">
             <img
-              src="/brand/logo.png"
+              src="/brand/auravix-logo.jpeg"
               alt=""
               aria-hidden="true"
-              className="h-7 w-7 shrink-0 rounded-md object-cover"
+              className="h-7 w-7 shrink-0 rounded-md object-cover border border-[#c79a63]/40"
             />
             <span className="truncate text-sm font-bold tracking-wide sm:text-base">
               AURAVIX BATH STUDIO

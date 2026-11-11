@@ -27,6 +27,11 @@ model User {
   appointments       Appointment[]
   inventoryTx        InventoryTransaction[]
   bundlesCreated     BrandBundle[]
+  refundsRequested   Refund[]               @relation("RefundRequester")
+  refundsReviewed    Refund[]               @relation("RefundReviewer")
+  refundComments     RefundComment[]
+  paymentsCreated    Payment[]
+  monthlyTargets     MonthlyTarget[]
 }
 
 model Customer {
@@ -41,6 +46,8 @@ model Customer {
   updatedAt  DateTime    @updatedAt
   leads      Lead[]
   quotations Quotation[]
+  refunds    Refund[]
+  payments   Payment[]
 }
 
 model Lead {
@@ -70,6 +77,13 @@ model Appointment {
   scheduledAt DateTime
   status      String    @default("SCHEDULED") // SCHEDULED | DONE | CANCELLED
   notes       String?
+  // Site visit & OTP verification
+  otpCode        String?
+  otpVerified    Boolean   @default(false)
+  otpVerifiedAt  DateTime?
+  checkInTime    DateTime?
+  checkOutTime   DateTime?
+  visitNotes     String?
   createdAt   DateTime  @default(now())
 }
 
@@ -176,6 +190,8 @@ model Quotation {
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   versions        QuotationVersion[]
+  refunds         Refund[]
+  payments        Payment[]
 }
 
 model QuotationVersion {
@@ -239,12 +255,14 @@ model QuotationItem {
   materialId String?
   bathroomId String?
   name       String
-  brand      String?           // Snapshot
-  sku        String?           // Snapshot
-  quantity   Float
-  unit       String
-  rate       Float
-  amount     Float
+  brand        String?           // Snapshot
+  sku          String?           // Snapshot
+  imageUrl     String?           // Snapshot for PDF & fixtures table
+  installCost  Float             @default(0)
+  quantity     Float
+  unit         String
+  rate         Float
+  amount       Float
   reservations StockReservation[]
 }
 
@@ -304,3 +322,101 @@ model Counter {
   key   String @id
   value Int    @default(0)
 }
+
+// ---------------------------------------------------------------------------
+// Payments & Installments
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id             String    @id @default(cuid())
+  paymentNumber  String    @unique
+  quotationId    String
+  quotation      Quotation @relation(fields: [quotationId], references: [id])
+  customerId     String
+  customer       Customer  @relation(fields: [customerId], references: [id])
+  amount         Float
+  refundedAmount Float     @default(0)
+  type           String    @default("INSTALLMENT") // BOOKING_ADVANCE | PROCUREMENT | WORK_IN_PROGRESS | FINAL_HANDOVER | OTHER
+  method         String    @default("UPI") // UPI | BANK_TRANSFER | CARD | CASH | CHEQUE
+  reference      String?   // Transaction ID / UTR
+  status         String    @default("RECEIVED") // PENDING | RECEIVED | FAILED | REFUNDED | PARTIALLY_REFUNDED
+  paidAt         DateTime? @default(now())
+  notes          String?
+  createdById    String?
+  createdBy      User?     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  refunds        Refund[]
+}
+
+// ---------------------------------------------------------------------------
+// Refund Management Workflow
+// ---------------------------------------------------------------------------
+
+model Refund {
+  id                    String          @id @default(cuid())
+  refundNumber          String          @unique
+  customerId            String
+  customer              Customer        @relation(fields: [customerId], references: [id])
+  orderId               String?         // Quotation ID or Order Number
+  quotationId           String?
+  quotation             Quotation?      @relation(fields: [quotationId], references: [id])
+  paymentId             String?
+  payment               Payment?        @relation(fields: [paymentId], references: [id])
+  originalPaymentAmount Float           @default(0)
+  requestedAmount       Float
+  approvedAmount        Float           @default(0)
+  completedAmount       Float           @default(0)
+  reason                String
+  status                String          @default("REFUND_REQUESTED")
+  // REFUND_REQUESTED | UNDER_REVIEW | APPROVED | REJECTED | PROCESSING | PARTIALLY_REFUNDED | REFUNDED | FAILED
+  processingRef         String?         // Payment gateway refund reference / UTR / Cheque No
+  paymentMethod         String?         // UPI | BANK_TRANSFER | CARD | CASH | CHEQUE
+  internalNotes         String?
+  requestedById         String
+  requestedBy           User            @relation("RefundRequester", fields: [requestedById], references: [id])
+  requestedAt           DateTime        @default(now())
+  reviewedById          String?
+  reviewedBy            User?           @relation("RefundReviewer", fields: [reviewedById], references: [id])
+  reviewedAt            DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  comments              RefundComment[]
+}
+
+model RefundComment {
+  id         String   @id @default(cuid())
+  refundId   String
+  refund     Refund   @relation(fields: [refundId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  userName   String?
+  userRole   String?
+  action     String?  // STATUS_CHANGE | NOTE | APPROVAL | REJECTION | EXECUTION
+  statusFrom String?
+  statusTo   String?
+  comment    String
+  createdAt  DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Targets & Goals
+// ---------------------------------------------------------------------------
+
+model MonthlyTarget {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  month             Int      // 1-12
+  year              Int      // e.g. 2026
+  revenueTarget     Float    @default(0)
+  collectionTarget  Float    @default(0)
+  leadsTarget       Int      @default(0)
+  conversionsTarget Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, month, year])
+}
+

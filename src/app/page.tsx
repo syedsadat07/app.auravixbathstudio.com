@@ -14,6 +14,7 @@ import QuotationsView from '@/components/views/quotations-view'
 import QuotationWizardView from '@/components/views/quotation-wizard-view'
 import QuotationDetailView from '@/components/views/quotation-detail-view'
 import OrdersView from '@/components/views/orders-view'
+import RefundsView from '@/components/views/refunds-view'
 import AppointmentsView from '@/components/views/appointments-view'
 import MaterialsView from '@/components/views/materials-view'
 import BundlesView from '@/components/views/bundles-view'
@@ -46,6 +47,8 @@ function ViewRenderer() {
       return <QuotationDetailView />
     case 'orders':
       return <OrdersView />
+    case 'refunds':
+      return <RefundsView />
     case 'appointments':
       return <AppointmentsView />
     case 'materials':

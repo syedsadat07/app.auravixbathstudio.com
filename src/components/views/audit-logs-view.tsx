@@ -36,7 +36,7 @@ const PAGE_SIZE = 50
 /** Timeline dot color by action group. */
 function dotColor(action: string): string {
   const a = action.toUpperCase()
-  if (a.includes('PRICE') || a.includes('PACKAGE')) return 'bg-[#f2620f]'
+  if (a.includes('PRICE') || a.includes('PACKAGE')) return 'bg-[#c79a63]'
   if (a.includes('ADMIN')) return 'bg-[#232327]'
   if (a.includes('QUOTE')) return 'bg-violet-500'
   if (a.includes('LEAD') || a.includes('APPOINTMENT')) return 'bg-green-500'

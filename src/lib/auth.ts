@@ -195,6 +195,16 @@ export async function nextQuotationNumber(prefix = 'ABS-Q'): Promise<string> {
   return `${prefix}-${String(n).padStart(6, '0')}`
 }
 
+export async function nextPaymentNumber(prefix = 'ABS-PAY'): Promise<string> {
+  const n = await nextCounter('payment', 101)
+  return `${prefix}-${String(n).padStart(6, '0')}`
+}
+
+export async function nextRefundNumber(prefix = 'ABS-REF'): Promise<string> {
+  const n = await nextCounter('refund', 101)
+  return `${prefix}-${String(n).padStart(6, '0')}`
+}
+
 // ---------- shared query scope ----------
 
 /** Returns the where-clause fragment that scopes leads/quotations to admins. */

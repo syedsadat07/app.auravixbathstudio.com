@@ -97,7 +97,7 @@ function ChartTooltip(props: {
         <p key={i} className="flex items-center gap-2 text-muted-foreground">
           <span
             className="inline-block size-2 shrink-0 rounded-full"
-            style={{ backgroundColor: entry.name === 'Revenue' ? '#f2620f' : '#a8a29e' }}
+            style={{ backgroundColor: entry.name === 'Revenue' ? '#c79a63' : '#a8a29e' }}
           />
           <span>{entry.name}:</span>
           <span className="font-semibold text-foreground">
@@ -344,7 +344,7 @@ export default function ReportsView() {
               <Bar
                 dataKey="revenue"
                 name="Revenue"
-                fill="#f2620f"
+                fill="#c79a63"
                 radius={[4, 4, 0, 0]}
                 maxBarSize={32}
               />

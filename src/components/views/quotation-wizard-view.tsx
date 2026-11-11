@@ -1310,7 +1310,7 @@ function SummaryRow2({
       <span
         className={cn(
           'shrink-0 font-semibold tabular-nums',
-          accent ? 'text-orange-600' : muted ? 'text-muted-foreground' : 'text-foreground'
+          accent ? 'text-[#996832]' : muted ? 'text-muted-foreground' : 'text-foreground'
         )}
       >
         {value}
@@ -3468,7 +3468,7 @@ function CostStep({
                           <td colSpan={4} className="py-1 text-right text-muted-foreground">
                             Discount
                           </td>
-                          <td className="py-1 text-right font-semibold tabular-nums text-orange-600">
+                          <td className="py-1 text-right font-semibold tabular-nums text-[#996832]">
                             −{formatINR(b.discountAmount)}
                           </td>
                         </tr>
@@ -3587,7 +3587,7 @@ function CostStep({
           {combined.projectDiscountAmount > 0 ? (
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">6. Project-Wide Discounts ({discountHint})</span>
-              <span className="font-semibold tabular-nums text-orange-600">−{formatINR(combined.projectDiscountAmount)}</span>
+              <span className="font-semibold tabular-nums text-[#996832]">−{formatINR(combined.projectDiscountAmount)}</span>
             </div>
           ) : (
             <div className="flex items-center justify-between text-sm text-muted-foreground">

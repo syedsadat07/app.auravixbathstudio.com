@@ -7,15 +7,18 @@ import {
   CalendarDays,
   CalendarClock,
   CheckCircle2,
+  KeyRound,
+  Loader2,
   MapPin,
   Navigation,
   Phone,
   RefreshCw,
+  ShieldCheck,
   StickyNote,
   XCircle,
 } from 'lucide-react'
 
-import { apiPatch, useApi } from '@/lib/client'
+import { apiPatch, apiPost, useApi } from '@/lib/client'
 import { fmtDate, fmtTime } from '@/lib/format'
 import { useNav } from '@/lib/nav'
 import { appointmentStatusMeta } from '@/lib/status'
@@ -30,6 +33,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -46,6 +57,8 @@ interface AppointmentItem {
   scheduledAt: string
   status: string
   notes: string | null
+  otpVerified?: boolean
+  otpVerifiedAt?: string | null
   createdAt: string
   lead: { id: string; leadNumber: string }
   customer: { name: string; phone: string; address: string | null; city: string | null }
@@ -78,6 +91,47 @@ export default function AppointmentsView() {
   const [date, setDate] = useState('')
   const [cancelTarget, setCancelTarget] = useState<AppointmentItem | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+
+  // OTP Verification state
+  const [otpModalTarget, setOtpModalTarget] = useState<AppointmentItem | null>(null)
+  const [generatedOtp, setGeneratedOtp] = useState<string | null>(null)
+  const [enteredOtp, setEnteredOtp] = useState<string>('')
+  const [otpLoading, setOtpLoading] = useState<boolean>(false)
+
+  async function handleGenerateOtp(apptId: string) {
+    try {
+      setOtpLoading(true)
+      const res = await apiPost<{ success: boolean; otpCode: string }>(`/api/appointments/${apptId}/otp`, {
+        action: 'generate',
+      })
+      setGeneratedOtp(res.otpCode)
+      toast.success('Site Visit OTP generated and sent to customer')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate OTP')
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
+  async function handleVerifyOtp() {
+    if (!otpModalTarget || !enteredOtp.trim()) return
+    try {
+      setOtpLoading(true)
+      await apiPost(`/api/appointments/${otpModalTarget.id}/otp`, {
+        action: 'verify',
+        otpCode: enteredOtp.trim(),
+      })
+      toast.success('Site Visit OTP Verified successfully! Lead meeting marked done.')
+      setOtpModalTarget(null)
+      setGeneratedOtp(null)
+      setEnteredOtp('')
+      await refresh()
+    } catch (err: any) {
+      toast.error(err.message || 'Invalid OTP code')
+    } finally {
+      setOtpLoading(false)
+    }
+  }
 
   const query = useMemo(() => {
     const qs = new URLSearchParams()
@@ -235,9 +289,17 @@ export default function AppointmentsView() {
                             {appt.customer.phone}
                           </a>
                         </div>
-                        <Badge variant="outline" className={meta?.badge}>
-                          {meta?.label ?? appt.status}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          {appt.otpVerified && (
+                            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 gap-1 text-[11px] font-semibold">
+                              <ShieldCheck className="size-3" />
+                              OTP Verified
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className={meta?.badge}>
+                            {meta?.label ?? appt.status}
+                          </Badge>
+                        </div>
                       </div>
 
                       {(appt.customer.address || appt.customer.city) && (
@@ -271,7 +333,23 @@ export default function AppointmentsView() {
 
                       {/* Actions */}
                       {scheduled && (
-                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <Button
+                            variant="outline"
+                            className={
+                              appt.otpVerified
+                                ? "min-h-11 border-emerald-200 text-emerald-700 bg-emerald-50/50"
+                                : "min-h-11 border-blue-200 text-blue-700 hover:bg-blue-50"
+                            }
+                            onClick={() => {
+                              setOtpModalTarget(appt)
+                              setGeneratedOtp(null)
+                              setEnteredOtp('')
+                            }}
+                          >
+                            <KeyRound className="size-4" />
+                            {appt.otpVerified ? 'OTP Verified' : 'Verify OTP'}
+                          </Button>
                           <Button
                             variant="outline"
                             className="min-h-11 border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
@@ -292,7 +370,7 @@ export default function AppointmentsView() {
                           </Button>
                           <Button
                             variant="outline"
-                            className="col-span-2 min-h-11 sm:col-span-1"
+                            className="min-h-11"
                             onClick={() => openMaps(appt)}
                           >
                             <Navigation className="size-4" />
@@ -365,6 +443,109 @@ export default function AppointmentsView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Site Visit OTP Verification Dialog */}
+      <Dialog
+        open={!!otpModalTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setOtpModalTarget(null)
+            setGeneratedOtp(null)
+            setEnteredOtp('')
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          {otpModalTarget && (
+            <div className="space-y-4">
+              <DialogHeader>
+                <div className="flex items-center gap-2">
+                  <div className="flex size-9 items-center justify-center rounded-lg bg-orange-50 text-primary">
+                    <KeyRound className="size-5" />
+                  </div>
+                  <div>
+                    <DialogTitle className="text-base font-bold">
+                      Site Visit OTP Verification
+                    </DialogTitle>
+                    <DialogDescription className="text-xs">
+                      {otpModalTarget.customer.name} · {otpModalTarget.lead.leadNumber}
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="rounded-xl border bg-stone-50 p-3.5 text-xs text-muted-foreground space-y-1">
+                <p className="font-semibold text-foreground">Anti-Fraud &amp; Attendance Protocol</p>
+                <p>
+                  To verify in-person presence at the customer&apos;s site, generate a 6-digit one-time code and enter the code given to you by the customer.
+                </p>
+              </div>
+
+              {generatedOtp ? (
+                <div className="rounded-xl border border-primary/30 bg-orange-50/60 p-4 text-center">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Generated OTP Code (Customer SMS / WhatsApp)
+                  </p>
+                  <p className="mt-1 font-mono text-3xl font-extrabold tracking-widest text-primary">
+                    {generatedOtp}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Valid for 15 minutes. Ask customer to read back this code.
+                  </p>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full min-h-11 font-semibold gap-2 border-primary/30 text-primary hover:bg-orange-50"
+                  onClick={() => handleGenerateOtp(otpModalTarget.id)}
+                  disabled={otpLoading}
+                >
+                  {otpLoading ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
+                  Generate 6-Digit OTP
+                </Button>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-foreground">
+                  Enter 6-Digit OTP from Customer
+                </label>
+                <Input
+                  value={enteredOtp}
+                  onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="e.g. 849201"
+                  className="h-11 font-mono text-center text-lg tracking-widest font-bold"
+                  maxLength={6}
+                />
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setOtpModalTarget(null)
+                    setGeneratedOtp(null)
+                    setEnteredOtp('')
+                  }}
+                  disabled={otpLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleVerifyOtp}
+                  disabled={otpLoading || enteredOtp.trim().length !== 6}
+                  className="gap-1.5 font-semibold"
+                >
+                  {otpLoading && <Loader2 className="size-3.5 animate-spin" />}
+                  Verify &amp; Confirm Visit
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
