@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  experimental: {
+    cpus: 2,
+    workerThreads: false,
+  },
 };
 
 export default nextConfig;
