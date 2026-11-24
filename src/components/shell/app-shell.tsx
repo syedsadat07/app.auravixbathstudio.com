@@ -169,12 +169,36 @@ function SidebarNav({
   const allMainItems: LiquidNavItem[] = MAIN_NAV.map((item) => ({
     label: item.label,
     icon: mkIcon(item.icon, activeView === item.view),
-    fx: item.view === 'dashboard' ? 'glow' : item.view === 'leads' ? 'wave' : item.view === 'quotations' ? 'drop' : 'pop',
+    fx:
+      item.view === 'dashboard'
+        ? 'glow'
+        : item.view === 'leads'
+        ? 'wave'
+        : item.view === 'quotations'
+        ? 'drop'
+        : item.view === 'orders'
+        ? 'pop'
+        : item.view === 'refunds'
+        ? 'spin'
+        : item.view === 'packages'
+        ? 'plane'
+        : 'glow',
   }))
   const allAdminItems: LiquidNavItem[] = ADMIN_NAV.map((item) => ({
     label: item.label,
     icon: mkIcon(item.icon, activeView === item.view),
-    fx: item.view === 'audit-logs' ? 'glow' : item.view === 'settings' ? 'spin' : 'pop',
+    fx:
+      item.view === 'materials'
+        ? 'drop'
+        : item.view === 'bundles'
+        ? 'pop'
+        : item.view === 'inventory'
+        ? 'plane'
+        : item.view === 'admins'
+        ? 'wave'
+        : item.view === 'settings'
+        ? 'spin'
+        : 'glow',
   }))
 
   const mainActiveIdx = MAIN_NAV.findIndex((n) => n.view === activeView)
@@ -186,8 +210,9 @@ function SidebarNav({
         items={allMainItems}
         active={mainActiveIdx >= 0 ? mainActiveIdx : undefined}
         defaultActive={mainActiveIdx >= 0 ? mainActiveIdx : 0}
-        tone="auravix"
+        tone="dark"
         orientation="vertical"
+        sound={true}
         onChange={(i) => onNavigate(MAIN_NAV[i].view)}
         className="w-full"
       />
@@ -200,8 +225,9 @@ function SidebarNav({
             items={allAdminItems}
             active={adminActiveIdx >= 0 ? adminActiveIdx : undefined}
             defaultActive={adminActiveIdx >= 0 ? adminActiveIdx : 0}
-            tone="auravix"
+            tone="dark"
             orientation="vertical"
+            sound={true}
             onChange={(i) => onNavigate(ADMIN_NAV[i].view)}
             className="w-full"
           />
@@ -482,39 +508,37 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="h-16 lg:hidden" aria-hidden="true" />
       </div>
 
-      {/* Mobile bottom navigation */}
-      <nav
-        aria-label="Bottom navigation"
-        className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t bg-card/95 pb-safe backdrop-blur lg:hidden"
-      >
-        {BOTTOM_NAV.map((item) => {
-          const Icon = item.icon
-          const active = isBottomActive(item.view, view)
-          return (
-            <button
-              key={item.view}
-              type="button"
-              onClick={() => handleNavigate(item.view)}
-              aria-current={active ? 'page' : undefined}
-              className={cn(
-                'flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors',
-                active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <Icon className="size-5" />
-              {item.label}
-            </button>
-          )
-        })}
-        <button
-          type="button"
-          onClick={() => setSheetOpen(true)}
-          className="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <MoreHorizontal className="size-5" />
-          More
-        </button>
-      </nav>
+      {/* Mobile bottom navigation — Liquid Navbar */}
+      <div className="fixed inset-x-0 bottom-2 z-40 flex justify-center px-2 lg:hidden pointer-events-none">
+        <div className="pointer-events-auto">
+          <LiquidNavbar
+            items={[
+              ...BOTTOM_NAV.map((item) => ({
+                label: item.label,
+                icon: <item.icon className="size-4 shrink-0" />,
+                fx: 'pop' as const,
+              })),
+              {
+                label: 'More',
+                icon: <MoreHorizontal className="size-4 shrink-0" />,
+                fx: 'pop' as const,
+              },
+            ]}
+            active={
+              sheetOpen
+                ? 4
+                : Math.max(0, BOTTOM_NAV.findIndex((item) => isBottomActive(item.view, view)))
+            }
+            tone="dark"
+            orientation="horizontal"
+            sound={true}
+            onChange={(i) => {
+              if (i === 4) setSheetOpen(true)
+              else handleNavigate(BOTTOM_NAV[i].view)
+            }}
+          />
+        </div>
+      </div>
 
       {/* Mobile drawer (hamburger / More) */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
