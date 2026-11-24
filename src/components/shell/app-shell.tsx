@@ -57,6 +57,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import BackupResetControls from '@/components/shell/backup-reset-controls'
 
 // ---------------------------------------------------------------------------
 // Navigation config
@@ -441,6 +442,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Search className="size-4" />
               <span className="hidden md:inline">Search…</span>
             </button>
+
+            {isSuperAdmin && <BackupResetControls />}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
