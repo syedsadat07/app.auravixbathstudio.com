@@ -57,7 +57,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { LiquidNavbar, type LiquidNavItem } from '@/components/ui/liquid-glass-navbar'
 
 // ---------------------------------------------------------------------------
 // Navigation config
@@ -148,12 +147,42 @@ function BrandBlock() {
   )
 }
 
-/** Convert a Lucide icon component to a React element for LiquidNavbar */
-function mkIcon(Icon: LucideIcon, active: boolean) {
+function NavButton({
+  item,
+  active,
+  onClick,
+}: {
+  item: NavItem
+  active: boolean
+  onClick: () => void
+}) {
+  const Icon = item.icon
   return (
-    <Icon
-      className={cn('size-4 shrink-0 transition-colors', active ? 'text-[#c79a63]' : 'text-stone-400')}
-    />
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        'group relative flex min-h-[42px] w-full items-center gap-3 rounded-lg px-3.5 text-sm font-medium transition-all duration-150',
+        active
+          ? 'bg-[#343338] text-white shadow-[inset_3px_0_#c79a63]'
+          : 'text-stone-300 hover:bg-white/5 hover:text-white'
+      )}
+    >
+      <Icon
+        className={cn(
+          'size-4 shrink-0 transition-colors',
+          active ? 'text-[#c79a63]' : 'text-stone-400 group-hover:text-stone-200'
+        )}
+      />
+      <span className="truncate">{item.label}</span>
+      {active && (
+        <span
+          className="ml-auto size-1.5 shrink-0 rounded-full bg-[#c79a63]"
+          aria-hidden="true"
+        />
+      )}
+    </button>
   )
 }
 
@@ -166,71 +195,33 @@ function SidebarNav({
   isSuperAdmin: boolean
   onNavigate: (view: AppView) => void
 }) {
-  const allMainItems: LiquidNavItem[] = MAIN_NAV.map((item) => ({
-    label: item.label,
-    icon: mkIcon(item.icon, activeView === item.view),
-    fx:
-      item.view === 'dashboard'
-        ? 'glow'
-        : item.view === 'leads'
-        ? 'wave'
-        : item.view === 'quotations'
-        ? 'drop'
-        : item.view === 'orders'
-        ? 'pop'
-        : item.view === 'refunds'
-        ? 'spin'
-        : item.view === 'packages'
-        ? 'plane'
-        : 'glow',
-  }))
-  const allAdminItems: LiquidNavItem[] = ADMIN_NAV.map((item) => ({
-    label: item.label,
-    icon: mkIcon(item.icon, activeView === item.view),
-    fx:
-      item.view === 'materials'
-        ? 'drop'
-        : item.view === 'bundles'
-        ? 'pop'
-        : item.view === 'inventory'
-        ? 'plane'
-        : item.view === 'admins'
-        ? 'wave'
-        : item.view === 'settings'
-        ? 'spin'
-        : 'glow',
-  }))
-
-  const mainActiveIdx = MAIN_NAV.findIndex((n) => n.view === activeView)
-  const adminActiveIdx = ADMIN_NAV.findIndex((n) => n.view === activeView)
-
   return (
-    <nav aria-label="Main navigation" className="scrollbar-slim flex-1 overflow-y-auto px-2 py-3 flex flex-col gap-2">
-      <LiquidNavbar
-        items={allMainItems}
-        active={mainActiveIdx >= 0 ? mainActiveIdx : undefined}
-        defaultActive={mainActiveIdx >= 0 ? mainActiveIdx : 0}
-        tone="dark"
-        orientation="vertical"
-        sound={true}
-        onChange={(i) => onNavigate(MAIN_NAV[i].view)}
-        className="w-full"
-      />
+    <nav aria-label="Main navigation" className="scrollbar-slim flex-1 overflow-y-auto px-2 py-3">
+      <div className="space-y-1">
+        {MAIN_NAV.map((item) => (
+          <NavButton
+            key={item.view}
+            item={item}
+            active={activeView === item.view}
+            onClick={() => onNavigate(item.view)}
+          />
+        ))}
+      </div>
       {isSuperAdmin && (
         <>
-          <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+          <p className="px-4 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
             Administration
           </p>
-          <LiquidNavbar
-            items={allAdminItems}
-            active={adminActiveIdx >= 0 ? adminActiveIdx : undefined}
-            defaultActive={adminActiveIdx >= 0 ? adminActiveIdx : 0}
-            tone="dark"
-            orientation="vertical"
-            sound={true}
-            onChange={(i) => onNavigate(ADMIN_NAV[i].view)}
-            className="w-full"
-          />
+          <div className="space-y-1">
+            {ADMIN_NAV.map((item) => (
+              <NavButton
+                key={item.view}
+                item={item}
+                active={activeView === item.view}
+                onClick={() => onNavigate(item.view)}
+              />
+            ))}
+          </div>
         </>
       )}
     </nav>
@@ -508,37 +499,39 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="h-16 lg:hidden" aria-hidden="true" />
       </div>
 
-      {/* Mobile bottom navigation — Liquid Navbar */}
-      <div className="fixed inset-x-0 bottom-2 z-40 flex justify-center px-2 lg:hidden pointer-events-none">
-        <div className="pointer-events-auto">
-          <LiquidNavbar
-            items={[
-              ...BOTTOM_NAV.map((item) => ({
-                label: item.label,
-                icon: <item.icon className="size-4 shrink-0" />,
-                fx: 'pop' as const,
-              })),
-              {
-                label: 'More',
-                icon: <MoreHorizontal className="size-4 shrink-0" />,
-                fx: 'pop' as const,
-              },
-            ]}
-            active={
-              sheetOpen
-                ? 4
-                : Math.max(0, BOTTOM_NAV.findIndex((item) => isBottomActive(item.view, view)))
-            }
-            tone="dark"
-            orientation="horizontal"
-            sound={true}
-            onChange={(i) => {
-              if (i === 4) setSheetOpen(true)
-              else handleNavigate(BOTTOM_NAV[i].view)
-            }}
-          />
-        </div>
-      </div>
+      {/* Mobile bottom navigation */}
+      <nav
+        aria-label="Bottom navigation"
+        className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-white/10 bg-[#19181c]/95 pb-safe backdrop-blur lg:hidden"
+      >
+        {BOTTOM_NAV.map((item) => {
+          const Icon = item.icon
+          const active = isBottomActive(item.view, view)
+          return (
+            <button
+              key={item.view}
+              type="button"
+              onClick={() => handleNavigate(item.view)}
+              aria-current={active ? 'page' : undefined}
+              className={cn(
+                'flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[10px] font-medium transition-colors',
+                active ? 'text-[#c79a63] font-semibold' : 'text-stone-400 hover:text-white'
+              )}
+            >
+              <Icon className={cn('size-5', active ? 'text-[#c79a63]' : 'text-stone-400')} />
+              <span>{item.label}</span>
+            </button>
+          )
+        })}
+        <button
+          type="button"
+          onClick={() => setSheetOpen(true)}
+          className="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[10px] font-medium text-stone-400 transition-colors hover:text-white"
+        >
+          <MoreHorizontal className="size-5" />
+          <span>More</span>
+        </button>
+      </nav>
 
       {/* Mobile drawer (hamburger / More) */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>

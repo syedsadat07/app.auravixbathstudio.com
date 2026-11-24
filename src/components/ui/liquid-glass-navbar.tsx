@@ -115,7 +115,6 @@ const NIMBUS_CSS = `
 @keyframes nvWave{0%{transform:none}20%{transform:rotate(-15deg)}40%{transform:rotate(12deg)}60%{transform:rotate(-8deg)}80%{transform:rotate(4deg)}100%{transform:translateY(-1px) scale(1.08)}}
 .nimbus-nav[data-compact="true"] .nimbus-item{padding:0 13px}
 .nimbus-nav[data-compact="true"] .nimbus-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-@media (max-width:520px){.nimbus-nav:not([data-compact="false"]) .nimbus-item{padding:0 13px}.nimbus-nav:not([data-compact="false"]) .nimbus-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}}
 @media (prefers-reduced-motion:reduce){.nv-ico svg,.nv-ico::before,.nv-ico::after,.nv-door{animation:none!important;transition:none}}
 
 /* Vertical orientation for sidebar */
@@ -271,7 +270,6 @@ export function LiquidNavbar({
   const dropRef = React.useRef<HTMLSpanElement>(null)
   const itemRefs = React.useRef<(HTMLElement | null)[]>([])
   const iconRefs = React.useRef<(HTMLSpanElement | null)[]>([])
-  const audio = React.useRef<AudioContext | null>(null)
   const st = React.useRef(makeState())
   const [gl, setGl] = React.useState<"on" | "off">("on")
   const [refract, setRefract] = React.useState(false)
@@ -578,30 +576,9 @@ export function LiquidNavbar({
     const b = el.getBoundingClientRect()
     return local(b.left + b.width / 2, b.top + b.height / 2)
   }
-  const plip = () => {
-    if (!sound) return
-    try {
-      const AC = window.AudioContext || (window as any).webkitAudioContext
-      const ctx = (audio.current ||= new AC())
-      const t = ctx.currentTime
-      const o = ctx.createOscillator()
-      const g = ctx.createGain()
-      o.type = "sine"
-      o.frequency.setValueAtTime(420 + Math.random() * 80, t)
-      o.frequency.exponentialRampToValueAtTime(1500, t + 0.07)
-      g.gain.setValueAtTime(0.0001, t)
-      g.gain.exponentialRampToValueAtTime(0.16, t + 0.008)
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16)
-      o.connect(g).connect(ctx.destination)
-      o.start(t)
-      o.stop(t + 0.18)
-    } catch {}
-  }
-
   const select = (i: number) => {
     const kind = items[i]?.fx ?? (items[i]?.icon ? "pop" : "none")
     setFx((f) => ({ i, n: f.n + 1 }))
-    plip()
     const c = iconCenter(i)
     if (c && kind === "drop") setTimeout(() => ripple(c.x, isVert ? c.y : st.current.t.cy, 1.4), 430)
     if (c && kind === "plane") ripple(c.x, c.y, 0.6)
