@@ -25,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import BackupResetSettings from '@/components/settings/backup-reset-settings'
 
 // ---------------------------------------------------------------------------
 // Settings — SA only. GET /api/settings → {settings: Record<key,value>}
@@ -415,6 +416,9 @@ export default function SettingsView() {
           <p className="text-xs text-muted-foreground">Shown on every quotation PDF.</p>
         </div>
       </SectionCard>
+
+      {/* Data Backup & Reset */}
+      <BackupResetSettings />
 
       {/* Sticky save bar */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur md:p-4">

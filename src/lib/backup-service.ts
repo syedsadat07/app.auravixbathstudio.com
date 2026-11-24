@@ -152,3 +152,56 @@ export async function resetBusinessData(): Promise<Record<string, number>> {
   )
   return cleared
 }
+
+/**
+ * Clears ONLY quotations and quote-dependent records (refunds, payments, reservations,
+ * quotation items, bathrooms, versions, quotes) and restarts quotation numbering.
+ * Preserves customers, leads, materials catalog, bundles, packages, and users.
+ */
+export async function resetQuotationData(): Promise<Record<string, number>> {
+  const cleared: Record<string, number> = {}
+  await db.$transaction(
+    async (tx) => {
+      const steps: TableName[] = [
+        'refundComment',
+        'refund',
+        'payment',
+        'stockReservation',
+        'quotationItem',
+        'bathroom',
+        'quotationVersion',
+        'quotation',
+      ]
+      for (const table of steps) {
+        const { count } = await delegate(tx, table).deleteMany()
+        cleared[table] = count
+      }
+      // Release any reserved stock
+      await tx.material.updateMany({ data: { reservedQty: 0 } })
+      // Restart quotation numbering
+      await tx.counter.deleteMany({ where: { key: 'quotation' } })
+    },
+    { timeout: 120_000, maxWait: 20_000 }
+  )
+  return cleared
+}
+
+/**
+ * Resets/updates the createdAt and updatedAt dates of all quotations and versions
+ * to the current date/time, so their validity and display are fresh and active.
+ */
+export async function resetQuotationDates(): Promise<{ count: number; updatedTo: string }> {
+  const now = new Date()
+  const result = await db.quotation.updateMany({
+    data: {
+      createdAt: now,
+      updatedAt: now,
+    },
+  })
+  await db.quotationVersion.updateMany({
+    data: {
+      createdAt: now,
+    },
+  })
+  return { count: result.count, updatedTo: now.toISOString() }
+}
