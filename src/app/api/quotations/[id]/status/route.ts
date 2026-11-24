@@ -44,23 +44,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     })
     if (!current) throw new ApiError(400, 'This quotation has no version.')
 
-    await db.$transaction(
-      async (tx) => {
-        await tx.quotation.update({ where: { id }, data: { status } })
-        await tx.quotationVersion.update({ where: { id: current.id }, data: { status } })
+    // Update quotation + version status in a short, focused transaction.
+    // Stock reservation / release is done OUTSIDE the transaction to avoid
+    // "Transaction not found" errors caused by long-running interactive queries
+    // exhausting the Prisma transaction lease on SQLite.
+    await db.$transaction(async (tx) => {
+      await tx.quotation.update({ where: { id }, data: { status } })
+      await tx.quotationVersion.update({ where: { id: current.id }, data: { status } })
+    })
 
-        // Stock movement rules:
-        // - Draft quotations must not reduce physical inventory.
-        // - Approved orders may reserve stock according to the configured workflow.
-        // - Cancelled orders must release reservations where applicable.
-        if (ORDER_FLAG_STATUSES.includes(status)) {
-          await reserveStockForQuotation(current.id, tx)
-        } else if (status === 'CANCELLED' || status === 'EXPIRED') {
-          await releaseStockReservations(current.id, tx)
-        }
-      },
-      { maxWait: 15_000, timeout: 60_000 }
-    )
+    // Stock movement rules (run after the status transaction has committed):
+    // - Approved orders reserve stock according to the configured workflow.
+    // - Cancelled / expired orders release active reservations.
+    if (ORDER_FLAG_STATUSES.includes(status)) {
+      await reserveStockForQuotation(current.id) // no tx — uses db directly
+    } else if (status === 'CANCELLED' || status === 'EXPIRED') {
+      await releaseStockReservations(current.id) // no tx — uses db directly
+    }
 
     await audit(user, 'QUOTE_STATUS', 'QUOTATION', id, `${quotation.status} → ${status}`)
 

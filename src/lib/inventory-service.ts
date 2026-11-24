@@ -219,31 +219,30 @@ export async function dispatchStockForQuotation(
     const newStock = Math.max(0, currentStock - res.qtyReserved)
     const newReserved = Math.max(0, currentReserved - res.qtyReserved)
 
-    await Promise.all([
-      client.material.update({
-        where: { id: res.materialId },
-        data: {
-          stockQty: newStock,
-          reservedQty: newReserved,
-        },
-      }),
-      client.stockReservation.update({
-        where: { id: res.id },
-        data: { status: 'DISPATCHED' },
-      }),
-      client.inventoryTransaction.create({
-        data: {
-          materialId: res.materialId,
-          type: 'ISSUED',
-          qty: -res.qtyReserved,
-          purchaseCost: material.purchaseCost ?? 0,
-          refType: 'QUOTATION',
-          refId: versionId,
-          notes: `Material dispatched for quotation order ${versionId}`,
-          createdById: userId,
-        },
-      }),
-    ])
+    // Sequential writes to avoid SQLite lock contention
+    await client.material.update({
+      where: { id: res.materialId },
+      data: {
+        stockQty: newStock,
+        reservedQty: newReserved,
+      },
+    })
+    await client.stockReservation.update({
+      where: { id: res.id },
+      data: { status: 'DISPATCHED' },
+    })
+    await client.inventoryTransaction.create({
+      data: {
+        materialId: res.materialId,
+        type: 'ISSUED',
+        qty: -res.qtyReserved,
+        purchaseCost: material.purchaseCost ?? 0,
+        refType: 'QUOTATION',
+        refId: versionId,
+        notes: `Material dispatched for quotation order ${versionId}`,
+        createdById: userId,
+      },
+    })
 
     count++
   }

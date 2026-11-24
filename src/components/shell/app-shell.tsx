@@ -57,6 +57,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { LiquidNavbar, type LiquidNavItem } from '@/components/ui/liquid-glass-navbar'
 
 // ---------------------------------------------------------------------------
 // Navigation config
@@ -147,31 +148,12 @@ function BrandBlock() {
   )
 }
 
-function NavButton({
-  item,
-  active,
-  onClick,
-}: {
-  item: NavItem
-  active: boolean
-  onClick: () => void
-}) {
-  const Icon = item.icon
+/** Convert a Lucide icon component to a React element for LiquidNavbar */
+function mkIcon(Icon: LucideIcon, active: boolean) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? 'page' : undefined}
-      className={cn(
-        'flex min-h-[42px] w-full items-center gap-3 rounded-lg px-3.5 text-sm font-medium transition-colors',
-        active
-          ? 'bg-[#343338] text-white shadow-[inset_3px_0_#c79a63]'
-          : 'text-stone-300 hover:bg-white/5 hover:text-white'
-      )}
-    >
-      <Icon className={cn('size-4 shrink-0', active ? 'text-[#c79a63]' : 'text-stone-400')} />
-      <span className="truncate">{item.label}</span>
-    </button>
+    <Icon
+      className={cn('size-4 shrink-0 transition-colors', active ? 'text-[#c79a63]' : 'text-stone-400')}
+    />
   )
 }
 
@@ -184,33 +166,45 @@ function SidebarNav({
   isSuperAdmin: boolean
   onNavigate: (view: AppView) => void
 }) {
+  const allMainItems: LiquidNavItem[] = MAIN_NAV.map((item) => ({
+    label: item.label,
+    icon: mkIcon(item.icon, activeView === item.view),
+    fx: item.view === 'dashboard' ? 'glow' : item.view === 'leads' ? 'wave' : item.view === 'quotations' ? 'drop' : 'pop',
+  }))
+  const allAdminItems: LiquidNavItem[] = ADMIN_NAV.map((item) => ({
+    label: item.label,
+    icon: mkIcon(item.icon, activeView === item.view),
+    fx: item.view === 'audit-logs' ? 'glow' : item.view === 'settings' ? 'spin' : 'pop',
+  }))
+
+  const mainActiveIdx = MAIN_NAV.findIndex((n) => n.view === activeView)
+  const adminActiveIdx = ADMIN_NAV.findIndex((n) => n.view === activeView)
+
   return (
-    <nav aria-label="Main navigation" className="scrollbar-slim flex-1 overflow-y-auto px-2 py-3">
-      <div className="space-y-1">
-        {MAIN_NAV.map((item) => (
-          <NavButton
-            key={item.view}
-            item={item}
-            active={activeView === item.view}
-            onClick={() => onNavigate(item.view)}
-          />
-        ))}
-      </div>
+    <nav aria-label="Main navigation" className="scrollbar-slim flex-1 overflow-y-auto px-2 py-3 flex flex-col gap-2">
+      <LiquidNavbar
+        items={allMainItems}
+        active={mainActiveIdx >= 0 ? mainActiveIdx : undefined}
+        defaultActive={mainActiveIdx >= 0 ? mainActiveIdx : 0}
+        tone="auravix"
+        orientation="vertical"
+        onChange={(i) => onNavigate(MAIN_NAV[i].view)}
+        className="w-full"
+      />
       {isSuperAdmin && (
         <>
-          <p className="px-4 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+          <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">
             Administration
           </p>
-          <div className="space-y-1">
-            {ADMIN_NAV.map((item) => (
-              <NavButton
-                key={item.view}
-                item={item}
-                active={activeView === item.view}
-                onClick={() => onNavigate(item.view)}
-              />
-            ))}
-          </div>
+          <LiquidNavbar
+            items={allAdminItems}
+            active={adminActiveIdx >= 0 ? adminActiveIdx : undefined}
+            defaultActive={adminActiveIdx >= 0 ? adminActiveIdx : 0}
+            tone="auravix"
+            orientation="vertical"
+            onChange={(i) => onNavigate(ADMIN_NAV[i].view)}
+            className="w-full"
+          />
         </>
       )}
     </nav>
